@@ -97,6 +97,7 @@ DEPLOY_TENANT_DASHBOARD.md
 *.md
 !README.md
 !LICENSE
+!docs/src/**/*.md
 # Cloud-only components (maintained in private repo)
 modal-inference/
 Dockerfile.vllm
