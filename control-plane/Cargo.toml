@@ -1,0 +1,67 @@
+[package]
+name = "axiomguard-cp"
+version = "0.1.0"
+edition = "2021"
+description = "AxiomGuard Control Plane — REST API, token issuer, policy distribution"
+
+[[bin]]
+name = "axiomguard-cp"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace crates
+common = { path = "../common" }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Web framework
+axum = { version = "0.7", features = ["ws", "http2"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.4", features = ["v4", "serde"] }
+
+# Ed25519 signing + verification
+ed25519-dalek = { version = "2.1", features = ["rand_core", "zeroize"] }
+rand = "0.8"
+
+# AES-256-GCM encryption
+aes-gcm = "0.10"
+base64 = "0.22"
+
+# Metrics
+prometheus = "0.13"
+
+# Constant-time comparison
+subtle = "2.6"
+
+# Errors
+thiserror = "2.0"
+
+# Hashing
+sha2 = "0.10"
+
+# Concurrent collections
+dashmap = "5.5"
+
+# Configuration
+dotenvy = "0.15"
+
+[dev-dependencies]
+axum-test = "14"

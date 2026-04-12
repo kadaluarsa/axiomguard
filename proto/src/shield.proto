@@ -1,0 +1,287 @@
+syntax = "proto3";
+
+package axiomguard.shield.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/duration.proto";
+
+option java_multiple_files = true;
+option java_package = "com.axiomguard.v1";
+
+// The Shield Service - Real-time Interceptor
+service ShieldService {
+  // Real-time classification of a stream chunk
+  rpc ClassifyStream (ShieldRequest) returns (ShieldResponse);
+  
+  // Bidirectional streaming for continuous session monitoring
+  rpc StreamSession (stream ShieldRequest) returns (stream ShieldResponse);
+  
+  // Explain a classification decision
+  rpc ExplainDecision (ExplainRequest) returns (ExplainResponse);
+  
+  // Analyze root cause using RAG over historical events
+  rpc AnalyzeRootCause (RcaRequest) returns (RcaResponse);
+  
+  // Health check for load balancers
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// Request for real-time content classification
+message ShieldRequest {
+  // Unique session identifier
+  string session_id = 1;
+  
+  // Content chunk to classify (can be empty for heartbeat)
+  string content_chunk = 2;
+  
+  // Event metadata (user agent, IP, etc.)
+  map<string, string> metadata = 3;
+  
+  // Timestamp of the event
+  google.protobuf.Timestamp timestamp = 4;
+  
+  // Request ID for tracing
+  string request_id = 5;
+  
+  // Optional: embedding vector for similarity search (if pre-computed)
+  repeated float embedding = 6;
+}
+
+// Response with classification decision
+message ShieldResponse {
+  // Classification decision
+  Decision decision = 1;
+  
+  // Confidence score (0.0 - 1.0)
+  float confidence = 2;
+  
+  // Human-readable reason for the decision
+  string reason = 3;
+  
+  // Rules that matched (for deterministic decisions)
+  repeated string matched_rules = 4;
+  
+  // AI insights (for AI-assisted decisions)
+  AiInsights ai_insights = 5;
+  
+  // Processing time in milliseconds
+  uint64 processing_time_ms = 6;
+  
+  // Timestamp of the response
+  google.protobuf.Timestamp timestamp = 7;
+  
+  // Session context vector (for stateful decisions)
+  repeated float session_context = 8;
+  
+  // Whether the decision was served from cache
+  bool cached = 9;
+  
+  // Detected tool calls in the content
+  repeated ToolCall tool_calls = 10;
+  
+  // Human-readable explanation of the decision
+  string explanation = 11;
+}
+
+// Classification decision types
+enum Decision {
+  // Allow the request/content
+  ALLOW = 0;
+  
+  // Block the request/content
+  BLOCK = 1;
+  
+  // Handover to human operator
+  HANDOVER = 2;
+  
+  // Flag for review but allow
+  FLAG = 3;
+}
+
+// AI insights for explainable decisions
+message AiInsights {
+  // Risk level (0.0 - 1.0)
+  float risk_level = 1;
+  
+  // Category of the content
+  string category = 2;
+  
+  // Detected anomalies
+  repeated string anomalies = 3;
+  
+  // Recommendations for handling
+  repeated string recommendations = 4;
+  
+  // Model used for inference
+  string model = 5;
+  
+  // Whether fallback model was used
+  bool fallback_used = 6;
+}
+
+// Tool call detected in content
+message ToolCall {
+  // Name of the tool/function being called
+  string tool_name = 1;
+  
+  // Arguments as JSON string
+  string arguments_json = 2;
+  
+  // Target system or resource (if inferable)
+  string target = 3;
+  
+  // Risk score for this specific tool call (0.0 - 1.0)
+  float risk_score = 4;
+}
+
+// Request to explain a decision
+message ExplainRequest {
+  // Tenant ID
+  string tenant_id = 1;
+  
+  // Original content that was classified
+  string content = 2;
+  
+  // Decision result to explain
+  Decision decision = 3;
+  
+  // Rules that matched
+  repeated string matched_rules = 4;
+  
+  // AI insights (if any)
+  AiInsights ai_insights = 5;
+  
+  // Detected tool calls
+  repeated ToolCall tool_calls = 6;
+}
+
+// Explanation response
+message ExplainResponse {
+  // Human-readable explanation
+  string explanation = 1;
+  
+  // Key factors that influenced the decision
+  repeated string key_factors = 2;
+  
+  // Suggested remediation
+  repeated string remediation = 3;
+}
+
+// Request for root cause analysis
+message RcaRequest {
+  // Tenant ID
+  string tenant_id = 1;
+  
+  // Event content to analyze
+  string content = 2;
+  
+  // Session ID for correlation
+  string session_id = 3;
+  
+  // Time window in hours to search historical events
+  int32 lookback_hours = 4;
+}
+
+// Root cause analysis response
+message RcaResponse {
+  // Identified root cause
+  string root_cause = 1;
+  
+  // Confidence in the root cause (0.0 - 1.0)
+  float confidence = 2;
+  
+  // Related events that support the analysis
+  repeated RelatedEvent related_events = 3;
+  
+  // Recommended actions
+  repeated string recommendations = 4;
+}
+
+// Related event for RCA
+message RelatedEvent {
+  string event_id = 1;
+  string decision_type = 2;
+  float similarity = 3;
+  string summary = 4;
+}
+
+// Health check request
+message HealthCheckRequest {
+  // Optional: service component to check
+  string component = 1;
+}
+
+// Health check response
+message HealthCheckResponse {
+  // Overall health status
+  HealthStatus status = 1;
+  
+  // Component-specific health
+  map<string, HealthStatus> components = 2;
+  
+  // Latency of the health check itself (ms)
+  uint64 latency_ms = 3;
+  
+  // Version of the service
+  string version = 4;
+}
+
+// Health status enum
+enum HealthStatus {
+  HEALTHY = 0;
+  DEGRADED = 1;
+  UNHEALTHY = 2;
+}
+
+// Rule definition for security rules
+message SecurityRule {
+  // Unique rule ID
+  string id = 1;
+  
+  // Rule name
+  string name = 2;
+  
+  // Rule description
+  string description = 3;
+  
+  // JSONLogic expression (as JSON string)
+  string logic_json = 4;
+  
+  // Decision when rule matches
+  Decision decision = 5;
+  
+  // Priority (lower = higher priority)
+  int32 priority = 6;
+  
+  // Whether rule is active
+  bool is_active = 7;
+  
+  // Created timestamp
+  google.protobuf.Timestamp created_at = 8;
+  
+  // Updated timestamp
+  google.protobuf.Timestamp updated_at = 9;
+  
+  // Tags for categorization
+  repeated string tags = 10;
+}
+
+// Rule sync notification (for LISTEN/NOTIFY)
+message RuleSyncNotification {
+  // Type of change
+  SyncType sync_type = 1;
+  
+  // Affected rule IDs
+  repeated string rule_ids = 2;
+  
+  // Timestamp of the change
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+enum SyncType {
+  FULL_SYNC = 0;
+  RULE_ADDED = 1;
+  RULE_UPDATED = 2;
+  RULE_DELETED = 3;
+}

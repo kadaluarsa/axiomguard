@@ -1,0 +1,17 @@
+[package]
+name = "axiomguard-sdk-node"
+version = "0.1.0"
+edition = "2021"
+description = "AxiomGuard Node.js SDK — napi-rs bindings for token verification and args hashing"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "3", features = ["default"] }
+napi-derive = "3"
+ag-tool-common = { path = "../tool-wrappers/common" }
+serde_json = "1.0"
+
+[build-dependencies]
+napi-build = "2"

@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: axiomguard-config
+  namespace: axiomguard
+data:
+  # Database configuration
+  DATABASE_URL: "postgres://axiomguard:${DB_PASSWORD}@postgres:5432/axiomguard"
+  DB_MAX_CONNECTIONS: "20"
+  DB_ENABLE_VECTOR: "true"
+  DB_VECTOR_DIMENSION: "768"
+  
+  # AI Backend configuration
+  AI_BACKEND: "vllm-grpc"
+  AI_FALLBACK: "vertex-ai-api"
+  VLLM_ENDPOINT: "http://vllm:8000/v1"
+  VERTEX_AI_LOCATION: "us-central1"
+  
+  # Decisive timer
+  DECISIVE_TIMER_MS: "80"
+  
+  # Proxy configuration
+  PROXY_BIND_ADDRESS: "0.0.0.0:8080"
+  SHIELD_ENDPOINT: "http://shield:50051"
+  
+  # Metrics
+  METRICS_ADDRESS: "0.0.0.0:9090"
+  
+  # Logging
+  RUST_LOG: "info"

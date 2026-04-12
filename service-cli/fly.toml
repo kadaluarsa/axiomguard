@@ -1,0 +1,38 @@
+app = 'axiomguard-shield'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '50051'
+  METRICS_PORT = '9090'
+  RUST_LOG = 'info'
+
+[[services]]
+  internal_port = 50051
+  protocol = 'tcp'
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 2
+  
+  [[services.ports]]
+    port = 50051
+    handlers = ['tls']
+    tls_options = { 'alpn' = ['h2'] }
+
+[[services]]
+  internal_port = 9090
+  protocol = 'tcp'
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  
+  [[services.ports]]
+    port = 9090
+    handlers = ['http']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 2

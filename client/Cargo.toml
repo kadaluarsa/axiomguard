@@ -1,0 +1,34 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Common types
+common = { path = "../common" }
+proto = { path = "../proto" }
+
+# gRPC client
+tonic = "0.9"
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Logging
+tracing = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Command line
+clap = { version = "4.0", features = ["derive"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID generation
+uuid = { version = "1.4", features = ["v4", "serde"] }
+
+# Futures utilities
+futures-util = "0.3"

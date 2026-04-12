@@ -1,0 +1,6 @@
+# Downloaded binaries
+bin/axiomguard-mcp
+bin/axiomguard-mcp.exe
+node_modules/
+npm-debug.log*
+package-lock.json

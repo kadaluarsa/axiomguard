@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package axiomguard.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option java_multiple_files = true;
+option java_package = "com.axiomguard.v1";
+
+// Audit service definition
+service AuditService {
+    // Submit an audit event for processing
+    rpc SubmitEvent(SubmitEventRequest) returns (SubmitEventResponse);
+    
+    // Get audit decision for an event
+    rpc GetDecision(GetDecisionRequest) returns (GetDecisionResponse);
+    
+    // Batch submit multiple audit events
+    rpc BatchSubmitEvents(BatchSubmitEventsRequest) returns (BatchSubmitEventsResponse);
+    
+    // Get real-time metrics
+    rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+    
+    // Update audit rules
+    rpc UpdateRules(UpdateRulesRequest) returns (UpdateRulesResponse);
+    
+    // Stream events and decisions in real-time
+    rpc StreamEvents(stream StreamEventsRequest) returns (stream StreamEventsResponse);
+}
+
+// Request to submit an audit event
+message SubmitEventRequest {
+    string source = 1;
+    string event_type = 2;
+    google.protobuf.Struct data = 3;
+    google.protobuf.Timestamp timestamp = 4;
+}
+
+// Response from submitting an audit event
+message SubmitEventResponse {
+    string event_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    bool accepted = 3;
+    string message = 4;
+}
+
+// Request to get an audit decision
+message GetDecisionRequest {
+    string event_id = 1;
+}
+
+// Response containing audit decision
+message GetDecisionResponse {
+    string event_id = 1;
+    DecisionType decision = 2;
+    float confidence = 3;
+    repeated string rules_matched = 4;
+    string ai_insights = 5;
+    uint64 processing_time_ms = 6;
+    google.protobuf.Timestamp timestamp = 7;
+}
+
+// Batch submit events request
+message BatchSubmitEventsRequest {
+    repeated SubmitEventRequest events = 1;
+}
+
+// Batch submit events response
+message BatchSubmitEventsResponse {
+    repeated SubmitEventResponse responses = 1;
+    uint64 total_events = 2;
+    uint64 accepted_events = 3;
+    uint64 failed_events = 4;
+}
+
+// Request to get metrics
+message GetMetricsRequest {
+    bool include_historical = 1;
+    uint64 time_window_seconds = 2;
+}
+
+// Response containing metrics
+message GetMetricsResponse {
+    AuditMetrics metrics = 1;
+    repeated ProcessingStats stats = 2;
+}
+
+// Audit metrics structure
+message AuditMetrics {
+    uint64 total_events = 1;
+    uint64 processed_events = 2;
+    uint64 blocked_events = 3;
+    uint64 flagged_events = 4;
+    double avg_processing_time_ms = 5;
+    uint64 errors = 6;
+    double rule_evaluation_time_ms = 7;
+    double ai_processing_time_ms = 8;
+}
+
+// Processing statistics for events
+message ProcessingStats {
+    string event_id = 1;
+    uint64 rule_evaluation_time_ms = 2;
+    uint64 ai_processing_time_ms = 3;
+    uint64 total_time_ms = 4;
+}
+
+// Request to update rules
+message UpdateRulesRequest {
+    repeated AuditRule rules = 1;
+    bool replace_all = 2;
+}
+
+// Response from updating rules
+message UpdateRulesResponse {
+    uint64 updated_rules = 1;
+    uint64 total_rules = 2;
+    string message = 3;
+}
+
+// Stream events request
+message StreamEventsRequest {
+    repeated string event_types = 1;
+    repeated string sources = 2;
+}
+
+// Stream events response
+message StreamEventsResponse {
+    oneof payload {
+        SubmitEventRequest event = 1;
+        GetDecisionResponse decision = 2;
+        AuditMetrics metrics = 3;
+    }
+}
+
+// Audit rule structure
+message AuditRule {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    repeated RuleCondition conditions = 4;
+    DecisionType decision = 5;
+    uint32 priority = 6;
+    bool enabled = 7;
+}
+
+// Rule condition
+message RuleCondition {
+    string field = 1;
+    ConditionOperator operator = 2;
+    google.protobuf.Value value = 3;
+}
+
+// Condition operators
+enum ConditionOperator {
+    EQUALS = 0;
+    NOT_EQUALS = 1;
+    GREATER_THAN = 2;
+    LESS_THAN = 3;
+    CONTAINS = 4;
+    NOT_CONTAINS = 5;
+    REGEX_MATCH = 6;
+    IN = 7;
+    NOT_IN = 8;
+}
+
+// Decision types
+enum DecisionType {
+    ALLOW = 0;
+    BLOCK = 1;
+    FLAG = 2;
+    REVIEW = 3;
+}

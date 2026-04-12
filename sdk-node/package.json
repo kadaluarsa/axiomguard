@@ -1,0 +1,28 @@
+{
+  "name": "@axiomguard/sdk",
+  "version": "0.1.0",
+  "description": "AxiomGuard Node.js SDK — in-process AI agent guardrail",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "napi-build",
+    "test": "node --test __test/index.test.js"
+  },
+  "napi": {
+    "name": "axiomguard",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-musl"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">= 18"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@napi-rs/cli": "^3"
+  }
+}

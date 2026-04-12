@@ -1,0 +1,56 @@
+[package]
+name = "service"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Common types
+common = { path = "../common" }
+proto = { path = "../proto" }
+engine = { path = "../engine" }
+
+# gRPC server
+tonic = { version = "0.9", features = ["tls", "tls-webpki-roots"] }
+prost-types = { workspace = true }
+tokio = { version = "1.0", features = ["full"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Configuration
+config = "0.14"
+dotenv = "0.15"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.6", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Streaming
+tokio-stream = "0.1"
+
+# Metrics
+prometheus = "0.13"
+hyper = { version = "1.0", features = ["full"] }
+warp = "0.3"
+
+# TLS support
+rustls = "0.21"
+rustls-pemfile = "1.0"
+tokio-rustls = "0.24"
+
+# Futures
+futures-channel = "0.3"
+futures-util = "0.3"
+futures = "0.3"
+
+# HTTP
+http = "0.2"
+
+# Security
+subtle = "2.5"
+
+# Tower middleware
+tower = "0.4"

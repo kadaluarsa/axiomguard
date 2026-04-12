@@ -1,0 +1,4 @@
+/target
+*.node
+*.wasm
+node_modules/

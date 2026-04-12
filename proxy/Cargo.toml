@@ -1,0 +1,72 @@
+[package]
+name = "proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Common types
+common = { path = "../common" }
+proto = { path = "../proto" }
+
+# gRPC client
+tonic = { workspace = true }
+prost-types = { workspace = true }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+tokio-stream = "0.1"
+
+# Web framework for HTTP/WebSocket/SSE
+axum = { version = "0.7", features = ["ws", "http2"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Configuration
+config = "0.14"
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.4", features = ["v4", "serde"] }
+
+# Futures
+futures = "0.3"
+futures-util = "0.3"
+
+# HTTP types
+http = "1.0"
+http-body-util = "0.1"
+
+# Connection pooling
+deadpool = "0.10"
+
+# Rate limiting
+governor = "0.6"
+
+# Cache
+lru = "0.12"
+moka = { version = "0.12", features = ["sync"] }
+
+# Circuit breaker
+backon = "0.4"
+
+# Constant-time comparison
+subtle = "2.6"
+
+# Metrics
+prometheus = "0.13"
+
+[dev-dependencies]
+tokio-test = "0.4"

@@ -1,0 +1,23 @@
+address = "0.0.0.0:50051"
+metrics_address = "0.0.0.0:9090"
+log_level = "info"
+
+[database]
+url = "sqlite:///var/lib/axiomguard/audit.db"
+max_connections = 10
+
+[ai]
+enabled = true
+api_key = ""
+model = "gemma-7b-it"
+temperature = 0.1
+max_tokens = 512
+
+[cache]
+enabled = true
+ttl = 300
+max_size = 10000
+
+[queue]
+max_events = 10000
+worker_threads = 8

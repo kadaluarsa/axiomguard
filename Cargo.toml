@@ -1,0 +1,39 @@
+[workspace]
+members = [
+    "proto",
+    "engine",
+    "service",
+    "client",
+    "common",
+    "benchmark",
+    "service-cli",
+    "client-cli",
+    "proxy",
+    "mcp-server",
+    "sdk",
+    "control-plane",
+    "tool-wrappers/common",
+    "tool-wrappers/exec",
+    "tool-wrappers/file",
+    "tool-wrappers/http",
+    "security/bypass_suite",
+]
+
+resolver = "2"
+exclude = ["sdk-py", "sdk-node", "sdk-wasm"]
+
+[workspace.dependencies]
+prost = "0.11"
+prost-types = "0.11"
+tonic = "0.9"
+tonic-build = "0.9"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = true
+codegen-units = 1
+opt-level = 3

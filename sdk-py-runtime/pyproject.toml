@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axiomguard-runtime"
+version = "0.1.0"
+description = "AxiomGuard Python runtime wrapper with auto-flush and policy refresh"
+requires-python = ">=3.9"
+dependencies = [
+    "axiomguard>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["python"]

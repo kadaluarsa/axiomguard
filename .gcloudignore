@@ -1,0 +1,39 @@
+# Rust build artifacts
+target/
+*.rs.bk
+*.pdb
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed for container build)
+docs/
+*.md
+
+# Terraform (not needed for container build)
+infra/
+*.tfstate*
+.terraform/
+
+# Tests (not needed for container build)
+tests/
+
+# Benchmarks (not needed for container build)
+benchmark/
+benches/
+
+# Config files not needed for build
+config.toml
+prometheus.yml
+docker-compose.yml

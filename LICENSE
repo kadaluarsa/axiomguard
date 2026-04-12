@@ -1,0 +1,51 @@
+Sustainable Use License
+
+Version 1.0
+
+This Sustainable Use License (the “License”) sets forth the terms on which the Licensor makes the Software available. By installing, downloading, accessing, using, or distributing any of the Software, you agree to all the terms of this License.
+
+1. Definitions
+
+1.1. “Licensor” means the copyright owner, AxiomGuard, Inc., and its successors and assigns.
+
+1.2. “Software” means the AxiomGuard software and documentation made available under this License.
+
+1.3. “You” means any individual or entity exercising permissions granted by this License.
+
+1.4. “Competing Offering” means any product or service that is offered to third parties on a paid or commercial basis and that provides functionality substantially similar to the managed cloud or SaaS offering of the Software, including but not limited to offering hosted access to the Software’s Control Plane, tenant portal, or API gateway as a service.
+
+2. Grant of Rights
+
+Subject to the conditions and limitations in this License, the Licensor hereby grants You a non-exclusive, worldwide, royalty-free, perpetual license to:
+
+(a) Use, reproduce, modify, and create Derivative Works of the Software for Your own internal business or personal purposes;
+
+(b) Distribute the Software and Derivative Works in Source or Object form, provided that any public distribution includes this License and all copyright, patent, trademark, and attribution notices;
+
+(c) Self-host the Software for Your own use or for the use of Your Affiliates.
+
+3. Restrictions
+
+3.1. Competing Offerings. You may not use the Software or any Derivative Work to offer a Competing Offering to third parties. This restriction does not apply to:
+
+(a) Offering managed hosting or professional services for the Software under a separate written commercial agreement with the Licensor; or
+
+(b) Using the Software internally to provide services to Your own employees, contractors, or Affiliates, provided those services are not resold or rebranded as a standalone product.
+
+3.2. Trademark Use. This License does not grant You any rights to use the Licensor’s trademarks, service marks, or product names except as required for reasonable and customary use in describing the origin of the Software.
+
+4. Affiliates
+
+“Affiliate” means any entity that directly or indirectly controls, is controlled by, or is under common control with a party, where “control” means ownership of fifty percent (50%) or more of the outstanding shares or beneficial ownership.
+
+5. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. Termination
+
+This License automatically terminates if You breach any of its terms. Upon termination, You must cease all use and distribution of the Software and destroy all copies in Your possession.
+
+7. General
+
+If any provision of this License is held to be unenforceable, such provision shall be reformed only to the extent necessary to make it enforceable, and the remaining provisions shall remain in full force and effect. This License constitutes the entire agreement between You and the Licensor regarding the Software.

@@ -1,0 +1,33 @@
+[package]
+name = "benchmark"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Common dependencies
+common = { path = "../common" }
+client = { path = "../client" }
+engine = { path = "../engine" }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Performance testing
+criterion = "0.4"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Random data generation
+rand = "0.8"
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmark"
+harness = false

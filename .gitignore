@@ -1,0 +1,116 @@
+# ============================================================================
+# Rust / Cargo
+/target/
+**/*.rs.bk
+Cargo.lock
+*.profraw
+
+# Node.js / JavaScript / TypeScript
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.local
+# TypeScript
+*.tsbuildinfo
+# Testing
+coverage/
+*.lcov
+.nyc_output/
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+# Environment & Secrets
+# Never commit environment files with secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+!.env.example
+!.env.template
+# Clerk specific
+.clerk/
+# IDE & Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfvars
+!infra/terraform.tfvars.example
+*.tfplan
+# Docker
+.dockerignore
+docker-compose.override.yml
+# Misc
+*.pid
+*.seed
+*.pid.lock
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+# Project Specific
+# Keep these but ignore specific files within them if needed
+# backend-api/
+# frontend-tenant/
+# mock-api/
+.omc/
+axiomguard-cloud/
+# (merged into axiomguard-cloud)
+CLERK_SETUP.md
+DEPLOY_TENANT_DASHBOARD.md
+.github/workflows/deploy-api.yml
+.github/workflows/deploy-frontend.yml
+*.md
+# Cloud-only components (maintained in private repo)
+modal-inference/
+Dockerfile.vllm
+infra/cloudrun/gpu-service.tf
+# Agent / IDE tool artifacts
+.sisyphus/
+.wrangler/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+# Cloud deployment scripts
+deploy-backend.sh
+scripts/deploy.sh
+check-services.sh
+check-status.sh
+start-local.sh
+# Build artifacts

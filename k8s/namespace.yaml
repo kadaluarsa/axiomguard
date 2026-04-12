@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axiomguard
+  labels:
+    name: axiomguard
+    app.kubernetes.io/name: axiomguard
+    app.kubernetes.io/component: namespace

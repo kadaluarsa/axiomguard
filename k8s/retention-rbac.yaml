@@ -1,0 +1,40 @@
+---
+# ServiceAccount for retention cleanup job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: axiomguard-retention
+  namespace: axiomguard
+  labels:
+    app: axiomguard
+    component: retention
+
+---
+# Role for retention job (minimal permissions)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: axiomguard-retention
+  namespace: axiomguard
+rules:
+# Allow reading secrets (for DB credentials)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+  resourceNames: ["postgres-secret"]
+
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: axiomguard-retention
+  namespace: axiomguard
+subjects:
+- kind: ServiceAccount
+  name: axiomguard-retention
+  namespace: axiomguard
+roleRef:
+  kind: Role
+  name: axiomguard-retention
+  apiGroup: rbac.authorization.k8s.io

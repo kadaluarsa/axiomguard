@@ -1,0 +1,51 @@
+address = "0.0.0.0:50051"
+metrics_address = "0.0.0.0:9090"
+log_level = "info"
+
+[database]
+# Set via DATABASE_URL environment variable
+url = ""
+max_connections = 20
+
+[ai]
+# Primary: Modal.com with Mistral 7B
+enabled = true
+backend = "modal"
+modal_endpoint = ""
+modal_api_key = ""
+model = "mistral-7b-instruct-v0.2"
+
+# Fallback: Vertex AI (only if Modal fails)
+fallback = "vertex-ai"
+vertex_project = ""
+vertex_location = "us-central1"
+fallback_model = "gemini-1.5-flash"
+
+temperature = 0.1
+max_tokens = 512
+timeout_ms = 60  # 60ms for AI (under 100ms total budget)
+
+[cache]
+enabled = true
+ttl = 300
+max_size = 10000
+
+[queue]
+max_events = 10000
+worker_threads = 4
+
+[auth]
+# Disabled - authentication handled by cloud-gateway
+# Shield is internal service, not exposed directly to tenants
+require_authentication = false
+valid_api_keys = []
+valid_bearer_tokens = []
+
+[routing]
+mode = "smart"
+timeout_ms = 100  # Hard 100ms SLA
+
+[performance]
+jsonlogic_timeout_ms = 1
+ai_timeout_ms = 60
+cache_max_size = 10000

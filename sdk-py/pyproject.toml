@@ -1,0 +1,24 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "axiomguard"
+version = "0.1.0"
+description = "AxiomGuard Python SDK — in-process AI agent guardrail"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "axiomguard._axiomguard_core"
+
+[tool.maturin.target.x86_64-apple-darwin]
+python-platform = "macos"
+
+[buildenv]
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY = "1"

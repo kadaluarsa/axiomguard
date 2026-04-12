@@ -1,0 +1,23 @@
+[package]
+name = "service-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Service library
+service = { path = "../service" }
+engine = { path = "../engine" }
+
+# Command line arguments
+clap = { version = "4.0", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Configuration
+config = "0.14"
+dotenv = "0.15"
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }

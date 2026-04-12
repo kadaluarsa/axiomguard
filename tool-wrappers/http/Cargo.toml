@@ -1,0 +1,16 @@
+[package]
+name = "ag-tool-http"
+version = "0.1.0"
+edition = "2021"
+description = "AxiomGuard HTTP tool wrapper — token-verified HTTP requests"
+
+[dependencies]
+ag-tool-common = { path = "../common" }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+thiserror = "2.0"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"

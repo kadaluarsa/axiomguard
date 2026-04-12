@@ -1,0 +1,35 @@
+{
+  "name": "@axiomguard/mcp-server",
+  "version": "0.1.0",
+  "description": "AxiomGuard MCP Server — Model Context Protocol edge service for agent security",
+  "main": "index.js",
+  "bin": {
+    "axiomguard-mcp": "./bin/axiomguard-mcp"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "test": "node -e \"console.log('Run: npx @axiomguard/mcp-server --help')\""
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "security",
+    "ai-agent",
+    "axiomguard"
+  ],
+  "author": "AxiomGuard",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/axiomguard/axiomguard.git",
+    "directory": "npm"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "index.js",
+    "install.js",
+    "bin/"
+  ]
+}

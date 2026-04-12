@@ -1,0 +1,11 @@
+{
+  "name": "sdk-node-runtime",
+  "version": "0.1.0",
+  "description": "Official Node.js runtime wrapper for AxiomGuard Guard",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "dependencies": {
+    "@axiomguard/sdk": "^0.0.0"
+  }
+}

@@ -1,0 +1,28 @@
+version = 1
+
+[settings]
+default-target = "x86_64-unknown-linux-gnu"
+build-dir = "target"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "lto=thin",
+    "-C", "codegen-units=1",
+    "-C", "opt-level=3"
+]
+
+[profile.dev]
+lto = "thin"
+codegen-units = 1
+opt-level = 0
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = true
+codegen-units = 1
+opt-level = 3

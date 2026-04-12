@@ -1,0 +1,50 @@
+steps:
+  # Step 1: Build and tag vLLM inference server container
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-vllm-image'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Generate version tag from date
+        VERSION_TAG="v$(date +%Y%m%d-%H%M%S)"
+        echo "Building vLLM image with version: $${VERSION_TAG}"
+        
+        # Build with both version and latest tags
+        docker build -f Dockerfile.vllm \
+          -t asia-southeast1-docker.pkg.dev/$PROJECT_ID/axiomguard/inference-vllm:$${VERSION_TAG} \
+          -t asia-southeast1-docker.pkg.dev/$PROJECT_ID/axiomguard/inference-vllm:latest \
+          .
+        
+        # Save version for later steps
+        echo "$${VERSION_TAG}" > /workspace/version.txt
+        echo "Build completed successfully"
+
+  # Step 2: Push tagged images to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-vllm-image'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Read the version tag
+        VERSION_TAG=$(cat /workspace/version.txt)
+        echo "Pushing vLLM images with version: $${VERSION_TAG}"
+        
+        # Push both version-tagged and latest images
+        docker push asia-southeast1-docker.pkg.dev/$PROJECT_ID/axiomguard/inference-vllm:$${VERSION_TAG}
+        docker push asia-southeast1-docker.pkg.dev/$PROJECT_ID/axiomguard/inference-vllm:latest
+        
+        echo "Images pushed successfully"
+        echo ""
+        echo "Image URLs:"
+        echo "  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/axiomguard/inference-vllm:$${VERSION_TAG}"
+        echo "  - asia-southeast1-docker.pkg.dev/$PROJECT_ID/axiomguard/inference-vllm:latest"
+
+# Machine type configuration for fast parallel builds
+options:
+  machineType: 'N1_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+# Build timeout (30 minutes for GPU image builds)
+timeout: '1800s'

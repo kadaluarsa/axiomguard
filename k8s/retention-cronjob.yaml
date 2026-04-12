@@ -1,0 +1,96 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: data-retention-cleanup
+  namespace: axiomguard
+  labels:
+    app: axiomguard
+    component: retention
+spec:
+  # Run daily at 2 AM (low traffic period)
+  schedule: "0 2 * * *"
+  
+  # Keep last 3 successful runs for history
+  successfulJobsHistoryLimit: 3
+  
+  # Keep last 1 failed run for debugging
+  failedJobsHistoryLimit: 1
+  
+  # Don't run if previous job is still running
+  concurrencyPolicy: Forbid
+  
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: axiomguard
+            component: retention
+        spec:
+          restartPolicy: OnFailure
+          
+          # Service account with DB access
+          serviceAccountName: axiomguard-retention
+          
+          containers:
+          - name: retention-cleanup
+            image: postgres:15-alpine
+            
+            resources:
+              requests:
+                cpu: "100m"
+                memory: "128Mi"
+              limits:
+                cpu: "500m"
+                memory: "256Mi"
+            
+            env:
+            - name: PGHOST
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: host
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: database
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+            
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting data retention cleanup at $(date)"
+              
+              # Run the cleanup function
+              psql -c "SELECT cleanup_old_events();"
+              
+              # Also cleanup expired sessions
+              psql -c "SELECT cleanup_expired_sessions();"
+              
+              # Log storage stats after cleanup
+              echo "Storage stats after cleanup:"
+              psql -c "
+                SELECT 
+                  pg_size_pretty(pg_database_size(current_database())) as total_size,
+                  pg_size_pretty(pg_total_relation_size('events')) as events_size,
+                  pg_size_pretty(pg_total_relation_size('decisions')) as decisions_size
+              "
+              
+              echo "Cleanup completed at $(date)"
+          
+          # Optional: Run as non-root for security
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000

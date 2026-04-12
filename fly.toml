@@ -1,0 +1,26 @@
+app = "axiomguard-cp"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.cp"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+[checks]
+  [checks.health]
+    grace_period = "30s"
+    interval = "30s"
+    method = "get"
+    path = "/v1/health"
+    port = 8080
+    timeout = "5s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

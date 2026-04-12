@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: axiomguard-ingress
+  namespace: axiomguard
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: axiomguard-ip
+    networking.gke.io/managed-certificates: axiomguard-cert
+    networking.gke.io/v1beta1.FrontendConfig: axiomguard-frontend-config
+spec:
+  rules:
+  - host: api.axiomguard.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: proxy
+            port:
+              number: 80
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: axiomguard-frontend-config
+  namespace: axiomguard
+spec:
+  sslPolicy: axiomguard-ssl-policy
+  redirectToHttps:
+    enabled: true
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: axiomguard-cert
+  namespace: axiomguard
+spec:
+  domains:
+  - api.axiomguard.example.com
