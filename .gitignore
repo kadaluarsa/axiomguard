@@ -95,6 +95,8 @@ DEPLOY_TENANT_DASHBOARD.md
 .github/workflows/deploy-api.yml
 .github/workflows/deploy-frontend.yml
 *.md
+!README.md
+!LICENSE
 # Cloud-only components (maintained in private repo)
 modal-inference/
 Dockerfile.vllm
