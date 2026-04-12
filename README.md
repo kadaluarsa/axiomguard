@@ -41,6 +41,7 @@ AxiomGuard: Agent → SDK (in-process) → Decision → Tool (<1ms)
 - 🧠 **Session Recovery** — Agent restarts? No problem. The SDK rehydrates its full risk state from the Control Plane's audit log. Attack pattern detection survives process death.
 - 🛡️ **Military-Grade Crypto** — AES-256-GCM policy encryption with random nonces. ZeroizeOnDrop signing keys. We didn't skim on the hard stuff.
 - 🌐 **Polyglot SDKs** — Native support for **Rust, Python, Node.js, and WASM**.
+- 🔌 **OpenClaw Integration** — Drop-in plugin for the OpenClaw AI gateway. Zero code changes to your agents.
 - 📊 **Real-Time Dashboard** — Vite + React 19 operator panel. Manage agents, rules, sessions, and bypass alerts like a boss.
 
 ---
@@ -123,6 +124,35 @@ if result.decision == "allow":
     token = guard.request_token("bash", {"command": "rm -rf /"})
     # Execute with cryptographic confidence
 ```
+
+### OpenClaw Gateway — Zero-Friction Security
+
+If you run **OpenClaw**, you don't need to touch a single line of agent code:
+
+```bash
+npm install @axiomguard/openclaw-plugin
+```
+
+```json
+{
+  "plugins": [
+    {
+      "id": "axiomguard",
+      "entry": "node_modules/@axiomguard/openclaw-plugin/dist/index.js",
+      "config": {
+        "enabled": true,
+        "cpUrl": "http://localhost:8080",
+        "apiKey": "your-cp-api-key",
+        "tenantId": "tenant_abc123",
+        "blockedCategories": ["automation"],
+        "requireApprovalCategories": ["exec"]
+      }
+    }
+  ]
+}
+```
+
+Every tool call flowing through OpenClaw is now guarded in **<1ms** with block lists, session risk limits, and cryptographic audit trails.
 
 ### Node.js SDK — Just as Ruthless
 
@@ -289,7 +319,8 @@ axiomguard/
 ├── service/                # Legacy v3 gRPC service
 ├── mcp-server/             # MCP server (classify, explain, RCA, health)
 ├── security/bypass_suite/  # 13 automated bypass test scenarios
-└── proto/                  # Protocol Buffers (legacy)
+├── proto/                  # Protocol Buffers (legacy)
+└── plugins/openclaw/       # First-party OpenClaw gateway plugin
 ```
 
 ---
