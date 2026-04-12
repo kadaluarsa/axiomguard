@@ -20,8 +20,13 @@ export declare class Guard {
   }>;
 }
 
+export interface RuntimeGuardParams extends GuardParams {
+  flushIntervalMs?: number;
+  refreshPolicyMs?: number;
+}
+
 export declare class RuntimeGuard {
-  constructor(params: GuardParams);
+  constructor(params: RuntimeGuardParams);
   start(): void;
   stop(): void;
   check(tool: string, args: any, options?: { sessionId?: string; agentId?: string }): Promise<any>;

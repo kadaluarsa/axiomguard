@@ -114,3 +114,5 @@ check-services.sh
 check-status.sh
 start-local.sh
 # Build artifacts
+# mdBook generated documentation
+docs/book/

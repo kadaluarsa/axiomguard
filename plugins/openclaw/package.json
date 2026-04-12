@@ -1,0 +1,42 @@
+{
+  "name": "@axiomguard/openclaw-plugin",
+  "version": "0.1.0",
+  "description": "AxiomGuard security plugin for OpenClaw AI agent gateway",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "openclaw.plugin.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test __test__/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "openclaw",
+    "axiomguard",
+    "security",
+    "ai-agent",
+    "plugin"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "openclaw": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@axiomguard/sdk-node-runtime": "file:../../sdk-node-runtime"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.0"
+  }
+}

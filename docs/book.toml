@@ -1,0 +1,39 @@
+[book]
+authors = ["AxiomGuard Engineering"]
+language = "en"
+multilingual = false
+src = "src"
+title = "AxiomGuard Documentation"
+description = "Comprehensive documentation for AxiomGuard - AI agent security guardrails"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/justlogout/axiomguard"
+edit-url-template = "https://github.com/justlogout/axiomguard/edit/main/docs/{path}"
+site-url = "/axiomguard/"
+cname = ""
+
+[output.html.print]
+enable = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html.playground]
+runnable = false
