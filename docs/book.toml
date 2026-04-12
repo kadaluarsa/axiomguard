@@ -1,7 +1,6 @@
 [book]
 authors = ["AxiomGuard Engineering"]
 language = "en"
-multilingual = false
 src = "src"
 title = "AxiomGuard Documentation"
 description = "Comprehensive documentation for AxiomGuard - AI agent security guardrails"
