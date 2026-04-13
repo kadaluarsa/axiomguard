@@ -1,4 +1,4 @@
-/** AxiomGuard OpenClaw Plugin — internal types */
+/** AxiomGuard OpenClaw Plugin v2 — types matching real OpenClaw plugin API */
 
 /** Mapping from an OpenClaw tool name to an AxiomGuard category. */
 export interface ToolMapping {
@@ -21,35 +21,97 @@ export interface SessionState {
   lastActivity: number;
 }
 
-/** Plugin configuration after validation and defaults applied. */
-export interface AxiomGuardPluginConfig {
-  enabled: true;
-  cpUrl: string;
-  apiKey: string;
-  tenantId: string;
-  agentId: string;
-  sessionRiskLimit: number;
-  failOpen: boolean;
-  requireApprovalCategories: string[];
-  blockedTools: string[];
-  blockedCategories: string[];
-  toolOverrides: Record<string, Partial<ToolMapping>>;
-  timeout: number;
-  auditFlushIntervalMs: number;
+// ---------------------------------------------------------------------------
+// Real OpenClaw hook shapes (matching openclaw/openclaw src/plugins/types.ts)
+// ---------------------------------------------------------------------------
+
+/** Hook input — what OpenClaw passes to before_tool_call. */
+export interface ToolCallInput {
+  toolName: string;
+  params: Record<string, unknown>;
+  runId?: string;
+  toolCallId?: string;
 }
 
-/** Disabled config — plugin self-disables with zero overhead. */
+/** Hook context — separate second parameter with agent/session info. */
+export interface ToolCallContext {
+  toolName: string;
+  agentId: string;
+  sessionKey: string;
+}
+
+/** Hook result — what before_tool_call returns to OpenClaw. */
+export interface ToolCallResult {
+  params?: Record<string, unknown>;
+  block?: boolean;
+  blockReason?: string;
+  requireApproval?: {
+    id?: string;
+    title: string;
+    description: string;
+    severity?: "info" | "warning" | "critical";
+    pluginId?: string;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Plugin config — supports standalone and managed modes
+// ---------------------------------------------------------------------------
+
+/** Raw config as it arrives from OpenClaw (all optional). */
+export interface AxiomGuardPluginConfig {
+  // General
+  enabled?: boolean;
+  failOpen?: boolean;
+
+  // Standalone mode (default when cpUrl absent)
+  blockedTools?: string[];
+  blockedCategories?: string[];
+  requireApprovalCategories?: string[];
+  sessionRiskLimit?: number;
+  toolOverrides?: Record<string, Partial<ToolMapping>>;
+
+  // Managed mode (requires cpUrl + apiKey + tenantId)
+  cpUrl?: string;
+  apiKey?: string;
+  tenantId?: string;
+  agentId?: string;
+  timeout?: number;
+  auditFlushIntervalMs?: number;
+}
+
+/** Validated config after applying defaults. */
+export interface ValidatedConfig {
+  enabled: true;
+  failOpen: boolean;
+  blockedTools: string[];
+  blockedCategories: string[];
+  requireApprovalCategories: string[];
+  sessionRiskLimit: number;
+  toolOverrides: Record<string, Partial<ToolMapping>>;
+  // Managed mode fields (absent in standalone)
+  cpUrl?: string;
+  apiKey?: string;
+  tenantId?: string;
+  agentId?: string;
+  timeout?: number;
+  auditFlushIntervalMs?: number;
+}
+
+/** Disabled config — plugin self-disables. */
 export interface DisabledConfig {
   enabled: false;
 }
 
-/** Final validated config is either enabled or disabled. */
-export type ValidatedConfig = AxiomGuardPluginConfig | DisabledConfig;
+export type ResolvedConfig = ValidatedConfig | DisabledConfig;
 
-/** Dependencies injected into the hook handler for testability. */
+// ---------------------------------------------------------------------------
+// Dependency injection for hook handler (testability)
+// ---------------------------------------------------------------------------
+
 export interface HookDeps {
-  config: AxiomGuardPluginConfig;
-  runtimeGuard: {
+  config: ValidatedConfig;
+  runtimeGuard?: {
     check: (
       tool: string,
       args: unknown,
@@ -72,19 +134,23 @@ export interface HookDeps {
     toolName: string,
     overrides?: Record<string, Partial<ToolMapping>>,
   ) => ToolMapping;
+  evaluateLocal: (
+    input: ToolCallInput,
+    config: ValidatedConfig,
+    sessionRisk: number,
+    mapping: ToolMapping,
+  ) => ToolCallResult | undefined;
 }
 
-/** OpenClaw hook context passed to before_tool_call. */
-export interface ToolCallContext {
-  tool: string;
-  args: Record<string, unknown>;
-  sessionId?: string;
-  agentId?: string;
-}
+// ---------------------------------------------------------------------------
+// OpenClaw config schema (for plugin registration)
+// ---------------------------------------------------------------------------
 
-/** Hook response returned to OpenClaw. */
-export interface HookResponse {
-  block?: boolean;
-  requireApproval?: boolean;
-  reason?: string;
+export interface OpenClawPluginConfigSchema {
+  safeParse?: (value: unknown) => {
+    success: boolean;
+    data?: unknown;
+    error?: { issues?: Array<{ message: string; path?: string[] }> };
+  };
+  jsonSchema?: Record<string, unknown>;
 }

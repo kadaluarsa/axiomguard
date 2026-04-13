@@ -1,7 +1,7 @@
 # AxiomGuard v4
 
 [![Rust](https://img.shields.io/badge/Rust-1.78%2B-orange.svg)](https://www.rust-lang.org/)
-[![Tests](https://img.shields.io/badge/tests-179%20passing-green.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-200%2B%20passing-green.svg)](#testing)
 [![License: Sustainable Use](https://img.shields.io/badge/License-Sustainable%20Use-purple.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-AxiomGuard-blue.svg)](https://kadaluarsa.github.io/axiomguard/)
 
@@ -37,6 +37,7 @@ AxiomGuard: Agent → SDK (in-process) → Decision → Tool (<1ms)
 
 - ⚡ **<1ms In-Process Rules** — The fastest AI agent guardrail on the planet. No network hop, no latency tax, no compromises.
 - 🔐 **Cryptographic Execution Tokens** — Ed25519-signed, `args_hash`-scoped, anti-replay tokens. If the math doesn't check out, the tool **does not run**. Period.
+- 🧠 **ML-Powered PII & Injection Detection** — Hybrid regex + ML pipeline sanitizes PII and blocks prompt injections in <2ms, before content reaches AI backends.
 - 🏢 **Enterprise Multi-Tenancy** — PostgreSQL Row Level Security at the database layer. True tenant isolation enforced by the DB engine itself.
 - 🧠 **Session Recovery** — Agent restarts? No problem. The SDK rehydrates its full risk state from the Control Plane's audit log. Attack pattern detection survives process death.
 - 🛡️ **Military-Grade Crypto** — AES-256-GCM policy encryption with random nonces. ZeroizeOnDrop signing keys. We didn't skim on the hard stuff.
@@ -256,6 +257,7 @@ cargo run --release -p mcp-server -- --transport stdio
 | Operation | Latency | Notes |
 |-----------|---------|-------|
 | SDK in-process rules | **<1ms** | Zero network overhead. Zero AI cost. |
+| ML PII + injection | **<2ms** | Regex sanitization + injection short-circuit |
 | SDK with CP token | **<10ms** | Single network round-trip |
 | Control Plane policy pull | **<5ms** | P99 on same-AZ LAN |
 | Tool wrapper verify | **<0.1ms** | Pure Ed25519 signature verification |
@@ -286,7 +288,7 @@ DATABASE_URL=postgresql://user:pass@localhost/axiomguard
 ## Testing & Security Hardening
 
 ```bash
-cargo test --workspace          # All 179 tests — no mercy
+cargo test --workspace          # 200+ tests — no mercy
 cargo test -p axiomguard-cp    # Control Plane isolation tests
 cargo test -p axiomguard-sdk   # SDK unit + integration tests
 cargo test -p ag-tool-common   # Tool wrapper common tests
@@ -313,11 +315,12 @@ axiomguard/
 ├── control-plane/          # REST API (Axum), token engine, policy engine, agent manager
 ├── tool-wrappers/          # Token-verified tool execution (exec, file, http)
 ├── operator-dashboard/     # Vite + React 19 admin dashboard (7 pages)
-├── engine/                 # Legacy v3 ShieldEngine (still maintained)
+├── engine/                 # ShieldEngine with ML-powered guard pipeline
 ├── common/                 # Shared types, database, models
 ├── proxy/                  # Legacy v3 HTTP/WS proxy
 ├── service/                # Legacy v3 gRPC service
 ├── mcp-server/             # MCP server (classify, explain, RCA, health)
+├── ml/                     # ML crate — PII, injection detection, risk scoring
 ├── security/bypass_suite/  # 13 automated bypass test scenarios
 ├── proto/                  # Protocol Buffers (legacy)
 └── plugins/openclaw/       # First-party OpenClaw gateway plugin
@@ -341,7 +344,7 @@ This repository contains the **full source code** of AxiomGuard, licensed under 
 ### What You Cannot Do
 - Take the code and offer a competing managed AxiomGuard-as-a-Service without a commercial agreement
 
-For commercial licensing inquiries, contact us at [hello@axiomguard.io](mailto:hello@axiomguard.io).
+For commercial licensing inquiries, contact us at [hello@frugale.app](mailto:hello@frugale.app).
 
 ---
 

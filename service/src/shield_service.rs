@@ -230,6 +230,10 @@ impl ShieldService for ShieldServiceImpl {
                 risk_score: tc.risk_score,
             }).collect(),
             explanation: None,
+            pii_detected: false,
+            injection_detected: false,
+            injection_confidence: 0.0,
+            ml_risk_score: 0.0,
         };
         
         let explanation = engine::explainability::explain_decision(

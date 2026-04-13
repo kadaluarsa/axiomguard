@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use sqlx::postgres::PgPool;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
@@ -51,6 +52,7 @@ pub struct RuleEntry {
     pub priority: i32,
     pub is_active: bool,
     pub version: i32,
+    pub logic_hash: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -63,6 +65,46 @@ pub enum AgentError {
     RuleNotFound(String),
     #[error("database error: {0}")]
     Database(String),
+    #[error("validation error: {0}")]
+    Validation(String),
+    #[error("rule conflict: {0}")]
+    Conflict(String),
+}
+
+/// Validate a rule entry before insertion.
+fn validate_rule_entry(rule: &RuleEntry) -> Result<(), AgentError> {
+    if rule.id.is_empty() {
+        return Err(AgentError::Validation("Rule id is required".to_string()));
+    }
+    if rule.name.is_empty() {
+        return Err(AgentError::Validation("Rule name is required".to_string()));
+    }
+    if !rule.logic.is_object() {
+        return Err(AgentError::Validation("Rule logic must be a JSON object".to_string()));
+    }
+    if rule.logic.as_object().map_or(true, |m| m.is_empty()) {
+        return Err(AgentError::Validation("Rule logic cannot be empty".to_string()));
+    }
+    let valid_decisions = ["Allow", "Block", "Flag", "Handover"];
+    if !valid_decisions.contains(&rule.decision.as_str()) {
+        return Err(AgentError::Validation(format!(
+            "Invalid decision '{}'. Must be one of: {}",
+            rule.decision, valid_decisions.join(", ")
+        )));
+    }
+    if rule.priority < 1 || rule.priority > 10000 {
+        return Err(AgentError::Validation(format!(
+            "Priority must be between 1-10000, got {}",
+            rule.priority
+        )));
+    }
+    if rule.version < 1 {
+        return Err(AgentError::Validation(format!(
+            "Version must be >= 1, got {}",
+            rule.version
+        )));
+    }
+    Ok(())
 }
 
 impl AgentManager {
@@ -127,6 +169,9 @@ impl AgentManager {
         .map_err(|e| AgentError::Database(e.to_string()))?;
 
         for row in rule_rows {
+            let logic_hash = format!("{:x}",
+                sha2::Sha256::digest(serde_json::to_string(&row.logic).unwrap_or_default().as_bytes())
+            );
             let rule = RuleEntry {
                 id: row.id,
                 tenant_id: row.tenant_id,
@@ -137,6 +182,7 @@ impl AgentManager {
                 priority: row.priority,
                 is_active: row.is_active,
                 version: row.version,
+                logic_hash,
             };
             self.rules.insert(rule.id.clone(), rule);
         }
@@ -391,8 +437,62 @@ impl AgentManager {
             .unwrap_or_default())
     }
 
+    /// Detect conflicts between a new rule and existing rules for the same tenant.
+    fn detect_conflicts(&self, rule: &RuleEntry, tenant_id: &str) -> Result<(), AgentError> {
+        let logic_str = serde_json::to_string(&rule.logic).unwrap_or_default();
+
+        for existing in self.rules.iter().filter(|r| r.value().tenant_id == tenant_id) {
+            let existing_rule = existing.value();
+
+            // Skip self-comparison on updates
+            if existing_rule.id == rule.id {
+                continue;
+            }
+
+            let existing_logic_str = serde_json::to_string(&existing_rule.logic).unwrap_or_default();
+
+            if logic_str == existing_logic_str {
+                // Same logic
+                if existing_rule.decision == rule.decision {
+                    // Exact duplicate: same logic, same decision
+                    return Err(AgentError::Conflict(format!(
+                        "Duplicate rule: '{}' has identical logic to existing rule '{}'",
+                        rule.name, existing_rule.name
+                    )));
+                } else {
+                    // Decision conflict: same logic, different decision (priority resolves it)
+                    tracing::warn!(
+                        "Decision conflict: rule '{}' has same logic as '{}' but different decision ({} vs {}). Priority will resolve.",
+                        rule.name, existing_rule.name, rule.decision, existing_rule.decision
+                    );
+                }
+            }
+
+            // Priority collision warning
+            if existing_rule.priority == rule.priority {
+                tracing::warn!(
+                    "Priority collision: rule '{}' and '{}' both have priority {}. First match wins.",
+                    rule.name, existing_rule.name, rule.priority
+                );
+            }
+        }
+        Ok(())
+    }
+
     pub async fn create_rule(&self, mut rule: RuleEntry, tenant_id: &str) -> Result<(), AgentError> {
         rule.tenant_id = tenant_id.to_string();
+
+        // Validate rule structure
+        validate_rule_entry(&rule)?;
+
+        // Detect conflicts with existing rules
+        self.detect_conflicts(&rule, tenant_id)?;
+
+        // Compute logic hash for future conflict detection
+        rule.logic_hash = format!("{:x}",
+            sha2::Sha256::digest(serde_json::to_string(&rule.logic).unwrap_or_default().as_bytes())
+        );
+
         if let Some(pool) = &self.pool {
             sqlx::query(
                 "INSERT INTO cp_rules (id, tenant_id, name, description, logic, decision, \
@@ -439,6 +539,18 @@ impl AgentManager {
     pub async fn update_rule(&self, id: &str, tenant_id: &str, mut update: RuleEntry) -> Result<RuleEntry, AgentError> {
         self.verify_rule_tenant(id, tenant_id)?;
         update.tenant_id = tenant_id.to_string();
+
+        // Validate rule structure
+        validate_rule_entry(&update)?;
+
+        // Detect conflicts with existing rules
+        self.detect_conflicts(&update, tenant_id)?;
+
+        // Compute logic hash for future conflict detection
+        update.logic_hash = format!("{:x}",
+            sha2::Sha256::digest(serde_json::to_string(&update.logic).unwrap_or_default().as_bytes())
+        );
+
         if let Some(pool) = &self.pool {
             let result = sqlx::query(
                 "UPDATE cp_rules SET name=$2, description=$3, logic=$4, decision=$5, \
@@ -552,4 +664,62 @@ struct BindingRow {
     agent_id: String,
     rule_id: String,
     priority_override: Option<i32>,
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+
+    fn make_valid_rule() -> RuleEntry {
+        RuleEntry {
+            id: "test-rule".to_string(),
+            tenant_id: "tenant1".to_string(),
+            name: "Test Rule".to_string(),
+            description: "A test rule".to_string(),
+            logic: serde_json::json!({"==": [{"var": "tool"}, "bash"]}),
+            decision: "Block".to_string(),
+            priority: 100,
+            is_active: true,
+            version: 1,
+            logic_hash: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_validate_valid_rule() {
+        let rule = make_valid_rule();
+        assert!(validate_rule_entry(&rule).is_ok());
+    }
+
+    #[test]
+    fn test_validate_empty_name() {
+        let mut rule = make_valid_rule();
+        rule.name = String::new();
+        let err = validate_rule_entry(&rule).unwrap_err();
+        assert!(err.to_string().contains("name is required"));
+    }
+
+    #[test]
+    fn test_validate_invalid_decision() {
+        let mut rule = make_valid_rule();
+        rule.decision = "Delete".to_string();
+        let err = validate_rule_entry(&rule).unwrap_err();
+        assert!(err.to_string().contains("Invalid decision"));
+    }
+
+    #[test]
+    fn test_validate_bad_priority() {
+        let mut rule = make_valid_rule();
+        rule.priority = 0;
+        let err = validate_rule_entry(&rule).unwrap_err();
+        assert!(err.to_string().contains("Priority"));
+    }
+
+    #[test]
+    fn test_validate_non_object_logic() {
+        let mut rule = make_valid_rule();
+        rule.logic = serde_json::json!("not an object");
+        let err = validate_rule_entry(&rule).unwrap_err();
+        assert!(err.to_string().contains("JSON object"));
+    }
 }

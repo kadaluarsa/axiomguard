@@ -1,6 +1,6 @@
 {
   "name": "@axiomguard/openclaw-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AxiomGuard security plugin for OpenClaw AI agent gateway",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

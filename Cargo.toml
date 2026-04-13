@@ -17,6 +17,7 @@ members = [
     "tool-wrappers/file",
     "tool-wrappers/http",
     "security/bypass_suite",
+    "ml",
 ]
 
 resolver = "2"

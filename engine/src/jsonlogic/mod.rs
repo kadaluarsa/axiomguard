@@ -94,6 +94,8 @@ pub enum JsonLogicError {
     EvaluationError(String),
     #[error("Maximum recursion depth exceeded ({0})")]
     MaxDepthExceeded(usize),
+    #[error("Validation error: {0}")]
+    Validation(String),
 }
 
 impl JsonLogicEngine {
@@ -111,7 +113,127 @@ impl JsonLogicEngine {
     {
         self.custom_operators.insert(name.into(), Box::new(func));
     }
-    
+
+    /// Validate that a JSONLogic rule is well-formed without evaluating it.
+    /// Checks: operators are known, arg counts are correct, nesting depth is within limits.
+    pub fn validate(&self, rule: &Value) -> Result<(), JsonLogicError> {
+        self.validate_value(rule, 0)
+    }
+
+    fn validate_value(&self, value: &Value, depth: usize) -> Result<(), JsonLogicError> {
+        if depth > MAX_RECURSION_DEPTH {
+            return Err(JsonLogicError::Validation(format!("Rule exceeds max nesting depth of {}", MAX_RECURSION_DEPTH)));
+        }
+
+        match value {
+            Value::Object(map) => {
+                if map.is_empty() {
+                    return Err(JsonLogicError::Validation("Empty JSON object is not a valid rule".to_string()));
+                }
+                if map.len() > 1 {
+                    return Err(JsonLogicError::Validation(format!("Rule object must have exactly one operator, found {} keys", map.len())));
+                }
+                let (operator, args) = map.iter().next().unwrap();
+                if !self.custom_operators.contains_key(operator) && !is_builtin_operator(operator) {
+                    return Err(JsonLogicError::Validation(format!("Unknown operator: '{}'", operator)));
+                }
+                self.validate_operator_args(operator, args, depth)
+            }
+            Value::String(_) | Value::Number(_) | Value::Bool(_) => Ok(()), // Literals are valid
+            Value::Array(arr) => {
+                for item in arr {
+                    self.validate_value(item, depth)?;
+                }
+                Ok(())
+            }
+            Value::Null => Ok(()),
+        }
+    }
+
+    fn validate_operator_args(&self, operator: &str, args: &Value, depth: usize) -> Result<(), JsonLogicError> {
+        // Binary comparison operators require exactly 2 args
+        let binary_ops = ["==", "===", "!=", "!==", ">", ">=", "<", "<=", "starts_with", "ends_with", "in"];
+        if binary_ops.contains(&operator) {
+            if let Value::Array(arr) = args {
+                if arr.len() != 2 {
+                    return Err(JsonLogicError::Validation(format!("Operator '{}' requires exactly 2 arguments, found {}", operator, arr.len())));
+                }
+                for arg in arr {
+                    self.validate_value(arg, depth + 1)?;
+                }
+            }
+            return Ok(());
+        }
+
+        // Logical operators require array of conditions
+        if operator == "and" || operator == "or" {
+            if let Value::Array(arr) = args {
+                if arr.is_empty() {
+                    return Err(JsonLogicError::Validation(format!("Operator '{}' requires at least 1 argument", operator)));
+                }
+                for arg in arr {
+                    self.validate_value(arg, depth + 1)?;
+                }
+            }
+            return Ok(());
+        }
+
+        // Not requires 1 arg
+        if operator == "!" {
+            if let Value::Array(arr) = args {
+                if arr.len() != 1 {
+                    return Err(JsonLogicError::Validation(format!("Operator '!' requires exactly 1 argument, found {}", arr.len())));
+                }
+                self.validate_value(&arr[0], depth + 1)?;
+            }
+            return Ok(());
+        }
+
+        // Var requires 1-2 args
+        if operator == "var" {
+            if let Value::Array(arr) = args {
+                if arr.is_empty() || arr.len() > 2 {
+                    return Err(JsonLogicError::Validation(format!("Operator 'var' requires 1-2 arguments, found {}", arr.len())));
+                }
+            }
+            return Ok(());
+        }
+
+        // If requires 2-3 args
+        if operator == "if" || operator == "?:" {
+            if let Value::Array(arr) = args {
+                if arr.len() < 2 || arr.len() > 3 {
+                    return Err(JsonLogicError::Validation(format!("Operator '{}' requires 2-3 arguments, found {}", operator, arr.len())));
+                }
+                for arg in arr {
+                    self.validate_value(arg, depth + 1)?;
+                }
+            }
+            return Ok(());
+        }
+
+        // Map/filter/reduce/all/none/some require exactly 2 args (array + rule)
+        let array_ops = ["map", "filter", "reduce", "all", "none", "some"];
+        if array_ops.contains(&operator) {
+            if let Value::Array(arr) = args {
+                if arr.len() != 2 {
+                    return Err(JsonLogicError::Validation(format!("Operator '{}' requires exactly 2 arguments, found {}", operator, arr.len())));
+                }
+                self.validate_value(&arr[0], depth + 1)?;
+                self.validate_value(&arr[1], depth + 1)?;
+            }
+            return Ok(());
+        }
+
+        // cat, merge can take any number of args — just validate each
+        if let Value::Array(arr) = args {
+            for arg in arr {
+                self.validate_value(arg, depth + 1)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Evaluate a rule against data
     /// 
     /// # Arguments
@@ -264,6 +386,16 @@ impl JsonLogicEngine {
     }
 }
 
+/// Check if an operator is a built-in JSONLogic operator
+fn is_builtin_operator(op: &str) -> bool {
+    matches!(op, "==" | "===" | "!=" | "!==" | ">" | ">=" | "<" | "<="
+        | "and" | "or" | "!" | "!!" | "var" | "if" | "?:" | "in"
+        | "cat" | "starts_with" | "ends_with" | "contains"
+        | "+" | "-" | "*" | "/" | "min" | "max" | "merge"
+        | "map" | "filter" | "reduce" | "all" | "none" | "some"
+        | "missing" | "missing_some" | "not" | "startsWith" | "endsWith")
+}
+
 /// Check if two values are equal according to JSONLogic rules
 fn jsonlogic_equals(a: &Value, b: &Value, strict: bool) -> bool {
     if strict {
@@ -373,5 +505,62 @@ mod tests {
         
         let result = engine.evaluate_json(&rule, &data).unwrap();
         assert_eq!(result, Value::Bool(true));
+    }
+}
+
+#[cfg(test)]
+mod validate_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_validate_simple_rule() {
+        let engine = JsonLogicEngine::new();
+        assert!(engine.validate(&json!({"==": [{"var": "tool"}, "bash"]})).is_ok());
+    }
+
+    #[test]
+    fn test_validate_compound_rule() {
+        let engine = JsonLogicEngine::new();
+        assert!(engine.validate(&json!({"and": [
+            {"==": [{"var": "tool"}, "bash"]},
+            {"contains": [{"var": "args"}, "rm"]}
+        ]})).is_ok());
+    }
+
+    #[test]
+    fn test_validate_unknown_operator() {
+        let engine = JsonLogicEngine::new();
+        let result = engine.validate(&json!({"unknown_op": [1, 2]}));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown operator"));
+    }
+
+    #[test]
+    fn test_validate_empty_object() {
+        let engine = JsonLogicEngine::new();
+        let result = engine.validate(&json!({}));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Empty JSON object"));
+    }
+
+    #[test]
+    fn test_validate_binary_wrong_args() {
+        let engine = JsonLogicEngine::new();
+        let result = engine.validate(&json!({"==": [1]}));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("exactly 2 arguments"));
+    }
+
+    #[test]
+    fn test_validate_nested_rules() {
+        let engine = JsonLogicEngine::new();
+        assert!(engine.validate(&json!({"or": [
+            {"==": [{"var": "tool"}, "bash"]},
+            {"and": [
+                {"==": [{"var": "tool"}, "exec"]},
+                {"contains": [{"var": "args"}, "curl"]}
+            ]}
+        ]})).is_ok());
     }
 }

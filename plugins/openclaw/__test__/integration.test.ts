@@ -1,53 +1,90 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type Server } from "node:http";
 import { createHandler } from "../src/hook.js";
 import { resolveToolMapping } from "../src/tool-map.js";
+import { evaluateLocal } from "../src/standalone.js";
 import { SessionTracker } from "../src/session-tracker.js";
 import { createConfig } from "../src/config.js";
-import type { HookDeps, AxiomGuardPluginConfig, ValidatedConfig } from "../src/types.js";
+import type { HookDeps, ValidatedConfig } from "../src/types.js";
 
-/** Spin up a minimal mock control plane for integration testing. */
 function startMockCP(port: number): Promise<{
   server: Server;
   requests: Array<{ url: string; body: unknown }>;
 }> {
   const requests: Array<{ url: string; body: unknown }> = [];
-
-  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+  const server = createServer((req, res) => {
     let body = "";
-    req.on("data", (chunk: Buffer) => {
-      body += chunk.toString();
-    });
+    req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
     req.on("end", () => {
-      requests.push({
-        url: req.url ?? "/",
-        body: body ? JSON.parse(body) : null,
-      });
-
-      // Respond based on route
-      if (req.url?.includes("/token/issue")) {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ token: "mock-token", decision: "Allow", allowed: true }));
-      } else if (req.url?.includes("/audit/batch")) {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true }));
-      } else if (req.url?.includes("/policy/pull")) {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ rules: [] }));
-      } else {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ decision: "Allow", allowed: true, riskScore: 0.1 }));
-      }
+      requests.push({ url: req.url ?? "/", body: body ? JSON.parse(body) : null });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ decision: "Allow", allowed: true }));
     });
   });
-
   return new Promise((resolve) => {
     server.listen(port, () => resolve({ server, requests }));
   });
 }
 
-describe("Integration: before_tool_call → mock CP", () => {
+describe("Integration: before_tool_call (standalone mode)", () => {
+  it("allows safe tools with no config", async () => {
+    const config = createConfig({}) as ValidatedConfig;
+    const tracker = new SessionTracker();
+    const handler = createHandler({ config, sessionTracker: tracker, resolveToolMapping, evaluateLocal });
+
+    const result = await handler(
+      { toolName: "fs_read", params: { path: "/etc/hosts" } },
+      { toolName: "fs_read", agentId: "main", sessionKey: "s1" },
+    );
+    assert.equal(result, undefined);
+  });
+
+  it("blocks tools in blocked list", async () => {
+    const config = createConfig({ blockedTools: ["bash"] }) as ValidatedConfig;
+    const tracker = new SessionTracker();
+    const handler = createHandler({ config, sessionTracker: tracker, resolveToolMapping, evaluateLocal });
+
+    const result = await handler(
+      { toolName: "bash", params: { cmd: "rm -rf /" } },
+      { toolName: "bash", agentId: "main", sessionKey: "s2" },
+    );
+    assert.equal(result!.block, true);
+  });
+
+  it("accumulates session risk across multiple calls", async () => {
+    const config = createConfig({ sessionRiskLimit: 0.8 }) as ValidatedConfig;
+    const tracker = new SessionTracker();
+    const handler = createHandler({ config, sessionTracker: tracker, resolveToolMapping, evaluateLocal });
+
+    let result = await handler({ toolName: "fs_read", params: {} }, { toolName: "fs_read", agentId: "main", sessionKey: "s3" });
+    assert.equal(result, undefined);
+
+    result = await handler({ toolName: "fs_read", params: {} }, { toolName: "fs_read", agentId: "main", sessionKey: "s3" });
+    assert.equal(result, undefined);
+
+    // Session risk: 0.3 * 2 = 0.6. Next fs_read (0.3) → 0.9 >= 0.8 → blocked
+    result = await handler({ toolName: "fs_read", params: {} }, { toolName: "fs_read", agentId: "main", sessionKey: "s3" });
+    assert.equal(result!.block, true);
+  });
+
+  it("returns requireApproval object with proper fields", async () => {
+    const config = createConfig({ sessionRiskLimit: 1.0, requireApprovalCategories: ["secrets"] }) as ValidatedConfig;
+    const tracker = new SessionTracker();
+    const handler = createHandler({ config, sessionTracker: tracker, resolveToolMapping, evaluateLocal });
+
+    const result = await handler(
+      { toolName: "secrets", params: {} },
+      { toolName: "secrets", agentId: "main", sessionKey: "s4" },
+    );
+    assert.ok(result!.requireApproval);
+    assert.ok(result!.requireApproval!.title);
+    assert.ok(result!.requireApproval!.description);
+    assert.ok(result!.requireApproval!.id);
+  });
+});
+
+describe("Integration: before_tool_call (managed mode + mock CP)", () => {
   let mockCP: { server: Server; requests: Array<{ url: string; body: unknown }> };
 
   beforeEach(async () => {
@@ -58,131 +95,65 @@ describe("Integration: before_tool_call → mock CP", () => {
     mockCP.server.close();
   });
 
-  function makeIntegrationDeps(
-    overrides?: Partial<HookDeps>,
-  ): HookDeps & { sessionTracker: SessionTracker } {
+  it("allows when CP responds Allow", async () => {
     const config = createConfig({
       cpUrl: "http://localhost:9876",
       apiKey: "test-key",
       tenantId: "tenant-1",
-      sessionRiskLimit: 0.8,
-    }) as AxiomGuardPluginConfig;
+    }) as ValidatedConfig;
 
-    const sessionTracker = new SessionTracker();
-
-    return {
+    const tracker = new SessionTracker();
+    const handler = createHandler({
       config,
+      sessionTracker: tracker,
+      resolveToolMapping,
+      evaluateLocal,
       runtimeGuard: {
         check: async (tool, args, options) => {
-          // Simulate real HTTP call to mock CP
-          const body = JSON.stringify({
-            tool,
-            args,
-            sessionId: options?.sessionId,
-            agentId: options?.agentId,
+          await fetch("http://localhost:9876/v1/check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tool, args, ...options }),
           });
-          return new Promise((resolve) => {
-            const req = `http://localhost:9876/v1/check`;
-            fetch(req, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body,
-            })
-              .then((r) => r.json())
-              .then(resolve)
-              .catch(() => resolve({ decision: "Allow", allowed: true }));
-          });
+          return { decision: "Allow", allowed: true };
         },
       },
-      sessionTracker,
-      resolveToolMapping,
-      ...overrides,
-    };
-  }
-
-  it("allows safe tool and fires CP call", async () => {
-    const deps = makeIntegrationDeps();
-    const handler = createHandler(deps);
-
-    const result = handler({
-      tool: "read",
-      args: { path: "/etc/hosts" },
-      sessionId: "int-s1",
     });
 
-    assert.equal(result.block, false);
-
-    // Wait for fire-and-forget CP call
-    await new Promise((r) => setTimeout(r, 200));
-    assert.ok(
-      mockCP.requests.some((r) => r.url.includes("/check")),
-      "CP should receive a check request",
+    const result = await handler(
+      { toolName: "fs_read", params: { path: "/tmp" } },
+      { toolName: "fs_read", agentId: "main", sessionKey: "int-s1" },
     );
+    assert.equal(result, undefined);
+
+    // Give fetch time to complete
+    await new Promise((r) => setTimeout(r, 200));
+    assert.ok(mockCP.requests.some((r) => r.url.includes("/check")));
   });
 
-  it("blocks tools in blocked list without calling CP for decision", async () => {
-    const deps = makeIntegrationDeps({
-      config: {
-        ...makeIntegrationDeps().config,
-        blockedTools: ["exec"],
+  it("blocks when CP responds Block", async () => {
+    const config = createConfig({
+      cpUrl: "http://localhost:9876",
+      apiKey: "test-key",
+      tenantId: "tenant-1",
+    }) as ValidatedConfig;
+
+    const tracker = new SessionTracker();
+    const handler = createHandler({
+      config,
+      sessionTracker: tracker,
+      resolveToolMapping,
+      evaluateLocal,
+      runtimeGuard: {
+        check: async () => ({ decision: "Block", reason: "Policy denied" }),
       },
     });
-    const handler = createHandler(deps);
 
-    const result = handler({
-      tool: "exec",
-      args: { cmd: "rm -rf /" },
-      sessionId: "int-s2",
-    });
-
-    assert.equal(result.block, true);
-  });
-
-  it("accumulates session risk across multiple calls", () => {
-    const deps = makeIntegrationDeps();
-    const handler = createHandler(deps);
-
-    // First call: exec (1.0 risk) — should be allowed (0 + 1.0 >= 0.8 → blocked!)
-    // Actually exec has risk 1.0, which already exceeds 0.8. Let's use message (0.2)
-    let result = handler({ tool: "message", args: {}, sessionId: "int-s3" });
-    assert.equal(result.block, false);
-
-    result = handler({ tool: "message", args: {}, sessionId: "int-s3" });
-    assert.equal(result.block, false);
-
-    result = handler({ tool: "message", args: {}, sessionId: "int-s3" });
-    assert.equal(result.block, false);
-
-    // Session risk: 0.2 * 3 = 0.6. Next message (0.2) → 0.8 >= 0.8 → blocked
-    result = handler({ tool: "message", args: {}, sessionId: "int-s3" });
-    assert.equal(result.block, true);
-    assert.ok(result.reason!.includes("risk limit"));
-  });
-
-  it("tracks separate sessions independently", () => {
-    const deps = makeIntegrationDeps();
-    const handler = createHandler(deps);
-
-    // Fill s1 to near-limit
-    for (let i = 0; i < 3; i++) {
-      handler({ tool: "message", args: {}, sessionId: "int-s4a" });
-    }
-
-    // s2 should still be clean
-    const result = handler({ tool: "message", args: {}, sessionId: "int-s4b" });
-    assert.equal(result.block, false);
-  });
-
-  it("audit events arrive at mock CP via fire-and-forget", async () => {
-    const deps = makeIntegrationDeps();
-    const handler = createHandler(deps);
-
-    handler({ tool: "read", args: { path: "/tmp" }, sessionId: "int-s5" });
-    handler({ tool: "write", args: { path: "/tmp/out" }, sessionId: "int-s5" });
-
-    await new Promise((r) => setTimeout(r, 300));
-
-    const checkReqs = mockCP.requests.filter((r) => r.url.includes("/check"));
-    assert.ok(checkReqs.length >= 2, "Should have at least 2 CP check requests");
+    const result = await handler(
+      { toolName: "fs_read", params: {} },
+      { toolName: "fs_read", agentId: "main", sessionKey: "int-s2" },
+    );
+    assert.equal(result!.block, true);
+    assert.equal(result!.blockReason, "Policy denied");
   });
 });

@@ -155,12 +155,18 @@ mod tests {
             reason: "Rule match: suspicious content".to_string(),
             matched_rules: vec!["rule-1".to_string()],
             ai_insights: None,
+            verification_result: None,
+            z3_verified: false,
             processing_time_ms: 10,
             cached: false,
             rule_eval_time_ms: Some(5),
             ai_time_ms: None,
             tool_calls: vec![],
             explanation: None,
+            pii_detected: false,
+            injection_detected: false,
+            injection_confidence: 0.0,
+            ml_risk_score: 0.0,
         };
         let explanation = explain_decision(&decision, &[], "test content");
         assert!(explanation.explanation.contains("blocked"));
@@ -182,12 +188,18 @@ mod tests {
                 model: "test".to_string(),
                 fallback_used: false,
             }),
+            verification_result: None,
+            z3_verified: false,
             processing_time_ms: 20,
             cached: false,
             rule_eval_time_ms: None,
             ai_time_ms: Some(15),
             tool_calls: vec![],
             explanation: None,
+            pii_detected: false,
+            injection_detected: false,
+            injection_confidence: 0.0,
+            ml_risk_score: 0.0,
         };
         let tools = vec![ToolCall {
             tool_name: "exec".to_string(),

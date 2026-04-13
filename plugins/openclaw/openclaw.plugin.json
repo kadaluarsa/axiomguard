@@ -1,4 +1,5 @@
 {
   "id": "axiomguard",
-  "entry": "dist/index.js"
+  "entry": "dist/index.js",
+  "description": "Security guardrails for OpenClaw agents — block risky tools, track session risk, enforce approval policies"
 }

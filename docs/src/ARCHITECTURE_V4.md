@@ -101,15 +101,21 @@ The SDK is the core product. It runs inside the AI agent's process, between the 
 │  │         │                                                    │  │
 │  │         ▼                                                    │  │
 │  │  ┌─────────────┐   ┌──────────────┐   ┌─────────────────┐   │  │
-│  │  │ 1. Tool     │──►│ 2. Argument  │──►│ 3. JSONLogic    │   │  │
-│  │  │    Allowlist│   │    Schema    │   │    Rules        │   │  │
-│  │  │             │   │    Validation│   │    Engine       │   │  │
-│  │  │ per-agent:  │   │             │   │ agent-scoped    │   │  │
-│  │  │ exec: deny  │   │ type checks │   │ + tenant-global │   │  │
-│  │  │ file: allow │   │ path checks │   │ risk scoring    │   │  │
-│  │  │ http: allow │   │ size limits │   │ pattern match   │   │  │
-│  │  │ db: restrict│   │             │   │ PII detection   │   │  │
+│  │  │ 1. Tool     │──►│ 2. Argument  │──►│ 3. ML Pre-processing │   │  │
+│  │  │    Allowlist│   │    Schema    │   │                     │   │  │
+│  │  │             │   │    Validation│   │   • PII sanitization │   │  │
+│  │  │ per-agent:  │   │             │   │   • Injection detect. │   │  │
+│  │  │ exec: deny  │   │ type checks │   │   • Risk scoring    │   │  │
+│  │  │ file: allow │   │ path checks │   │                     │   │  │
+│  │  │ http: allow │   │ size limits │   │                     │   │  │
+│  │  │ db: restrict│   │             │   │ <2ms total, short-circuit at >0.8 conf. │   │  │
 │  │  └─────────────┘   └──────────────┘   └─────────────────┘   │  │
+│  │         │                   │                  │              │  │
+│  │         ▼                   ▼                  ▼              │  │
+│  │  ┌─────────────┐   ┌──────────────┐   ┌─────────────────┐   │  │
+│  │  │ 4. JSONLogic│──►│ 5. Routing   │──►│ 6. Decision     │   │  │
+│  │  │    Rules    │   │    Modes     │   │                │   │  │
+│  │  │             │   │             │   │                │   │  │
 │  │         │                   │                  │              │  │
 │  │         ▼                   ▼                  ▼              │  │
 │  │  ┌─────────────────────────────────────────────────────────┐  │  │
@@ -237,18 +243,20 @@ flowchart TD
 |-------|---------|-------|
 | Tool allowlist check | ~0.001ms | HashMap lookup |
 | Argument schema validation | ~0.01ms | JSON Schema or structural check |
+| ML PII sanitization | ~0.05ms | 13 regex patterns, <1ms |
+| ML injection detection | ~0.05-0.95ms | 11 patterns across 4 categories |
+| ML risk scoring | ~0.1ms | Heuristic-based, short-circuit at >0.8 conf. |
 | JSONLogic rule evaluation | ~0.05-0.5ms | Pre-compiled AST, 100 rules |
-| PII detection | ~0.05ms | Lazy-compiled regex |
 | Decision render | ~0.001ms | Enum match |
 | Session risk update | ~0.01ms | In-memory counter |
 | Audit buffer write | ~0.001ms | Vec push (async flush) |
-| **BLOCK path total** | **<0.1ms** | No token, no network, no AI |
+| **BLOCK path total** | **<2ms** | ML blocks injection without AI |
 | Token cache hit | ~0.001ms | moka lookup by (tool + args_hash) |
 | Token cache miss (CP call) | ~5ms | HTTP to Control Plane, Ed25519 sign |
 | Tool wrapper verification | ~0.01ms | Ed25519 signature verify + hash check |
-| **ALLOW path (cached token)** | **<0.1ms** | Token already in cache |
-| **ALLOW path (new token)** | **~5ms** | One HTTP round-trip to CP |
-| **ALLOW path (amortized)** | **~1ms** | 40-60% cache hit rate |
+| **ALLOW path (cached token)** | **<2ms** | ML processing + token |
+| **ALLOW path (new token)** | **~7ms** | ML + one HTTP round-trip to CP |
+| **ALLOW path (amortized)** | **~3ms** | ML + 40-60% cache hit rate |
 
 ### 2.4 SDK Platform Tiers
 
@@ -1012,6 +1020,43 @@ axiomguard/
 │   └── src/
 │       └── lib.rs
 │
+├── engine/                              # Rust core library (shared with CP)
+│   ├── Cargo.toml
+│   └── src/
+│       ├── main.rs                     # Binary entry point
+│       ├── lib.rs                      # Public API + do_classify()
+│       ├── routing.rs                   # Tool routing logic
+│       ├── config.rs                   # Configuration
+│       ├── rule_sync.rs                # Policy sync with CP
+│       ├── telemetry.rs                # Tracing, metrics
+│       ├── shutdown.rs                 # Graceful shutdown
+│       ├── circuit_breaker.rs          # AI backend protection
+│       ├── retry_queue.rs               # Event retry (at-least-once)
+│       ├── concurrency_tests.rs         # SDK + CP integration tests
+│       ├── quota.rs                    # Multi-tenant quota enforcement
+│       ├── retention.rs                 # Data lifecycle management
+│       ├── integrity.rs                # Binary integrity check
+│       ├── tool_parser.rs              # OpenAI/Anthropic/generic tool parsing
+│       ├── pii.rs                      # PII redaction (GDPR/CCPA)
+│       ├── ml_layer.rs                 # ML pre-processing adapter
+│       ├── ai.rs                       # vLLM + VertexAI (shared with CP)
+│       └── jsonlogic/                  # Deterministic rule engine
+│           ├── mod.rs
+│           └── operators.rs
+│
+├── ml/                                  # ML crate (axiomguard-ml)
+│   ├── Cargo.toml
+│   └── src/
+│       ├── lib.rs                      # AxiomGuardML main interface
+│       ├── pii/                        # PII sanitization module
+│       │   ├── mod.rs                  # 13 regex patterns for PII detection
+│       │   └── regex_layer.rs         # Fast regex-based PII redaction
+│       ├── injection/                  # Injection detection module
+│       │   ├── mod.rs                  # 11 patterns across 4 categories
+│       │   └── patterns.rs            # SQL, XSS, command, template injection
+│       └── embedding/                  # Semantic risk scoring (Candle-based)
+│           └── mod.rs                  # Heuristic risk assessment
+│
 ├── control-plane/                      # Self-hosted control plane
 │   ├── Cargo.toml
 │   └── src/
@@ -1037,7 +1082,7 @@ axiomguard/
 │       │   ├── escalation.rs           # Process SDK FLAG events
 │       │   ├── anomaly.rs              # Cross-session anomaly detection
 │       │   └── bypass_detector.rs      # Detect audit gaps, bypass patterns
-│       ├── ai.rs                       # vLLM + VertexAI (shared from engine)
+│       ├── ai.rs                       # vLLM + VertexAI (from engine)
 │       ├── circuit_breaker.rs          # AI backend protection
 │       ├── quota.rs                    # Multi-tenant quota (persisted)
 │       ├── persistence.rs              # DB writes + retry queue
