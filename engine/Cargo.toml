@@ -62,3 +62,9 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
 
 # Semantic embeddings
 fastembed = "4"
+
+# ML capabilities (PII, injection detection, risk scoring)
+axiomguard-ml = { path = "../ml" }
+
+# Z3 SMT Solver for formal verification
+z3 = "0.18.0"

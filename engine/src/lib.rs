@@ -20,6 +20,8 @@ pub mod routing;
 pub mod shutdown;
 pub mod tool_parser;
 pub mod explainability;
+pub mod ml_layer;
+pub mod z3_engine;
 
 // Re-export telemetry from common for backward compatibility
 pub use common::telemetry as telemetry;
@@ -61,6 +63,12 @@ pub struct ShieldEngine {
     decision_repository: Option<Arc<DecisionRepository>>,
     /// Optional semantic text embedding model
     text_embedding: Option<Arc<fastembed::TextEmbedding>>,
+    /// Z3 formal verification engine
+    z3_engine: Option<crate::z3_engine::Z3Engine>,
+    /// ML layer for PII, injection detection, and risk scoring
+    ml_layer: ml_layer::MlLayer,
+    /// Stop evaluating rules after first BLOCK match (for performance)
+    early_exit_on_block: bool,
 }
 
 impl std::fmt::Debug for ShieldEngine {
@@ -78,6 +86,8 @@ impl std::fmt::Debug for ShieldEngine {
             .field("event_repository", &self.event_repository)
             .field("decision_repository", &self.decision_repository)
             .field("text_embedding", &self.text_embedding.is_some())
+            .field("ml_layer", &self.ml_layer)
+            .field("early_exit_on_block", &self.early_exit_on_block)
             .finish()
     }
 }
@@ -114,12 +124,19 @@ pub struct DecisionResult {
     pub reason: String,
     pub matched_rules: Vec<String>,
     pub ai_insights: Option<AiInsights>,
+    pub verification_result: Option<String>,
+    pub z3_verified: bool,
     pub processing_time_ms: u64,
     pub cached: bool,
     pub rule_eval_time_ms: Option<u64>,
     pub ai_time_ms: Option<u64>,
     pub tool_calls: Vec<tool_parser::ToolCall>,
     pub explanation: Option<String>,
+    /// ML layer results
+    pub pii_detected: bool,
+    pub injection_detected: bool,
+    pub injection_confidence: f32,
+    pub ml_risk_score: f32,
 }
 
 /// AI insights
@@ -282,6 +299,9 @@ impl ShieldEngine {
             event_repository: None,
             decision_repository: None,
             text_embedding: None,
+            ml_layer: ml_layer::MlLayer::new(),
+            early_exit_on_block: false,
+            z3_engine: None,
         }
     }
     
@@ -300,6 +320,13 @@ impl ShieldEngine {
     /// Attach a decision repository for decision snapshotting
     pub fn with_decision_repository(mut self, repo: Arc<DecisionRepository>) -> Self {
         self.decision_repository = Some(repo);
+        self
+    }
+
+    /// Enable early exit: stop rule evaluation after first BLOCK match.
+    /// Improves performance but collects fewer matched rules for audit.
+    pub fn with_early_exit_on_block(mut self, enabled: bool) -> Self {
+        self.early_exit_on_block = enabled;
         self
     }
     
@@ -324,6 +351,12 @@ impl ShieldEngine {
         self.text_embedding = embedder;
         self
     }
+
+    /// Attach a Z3 formal verification engine
+    pub fn with_z3_engine(mut self, engine: Option<crate::z3_engine::Z3Engine>) -> Self {
+        self.z3_engine = engine;
+        self
+    }
     
     /// Process an event with decisive timer enforcement
     /// 
@@ -344,12 +377,18 @@ impl ShieldEngine {
                 reason: "Content too large: max 10KB for realtime classification".to_string(),
                 matched_rules: vec![],
                 ai_insights: None,
+                verification_result: None,
+                z3_verified: false,
                 processing_time_ms: start.elapsed().as_millis() as u64,
                 cached: false,
                 rule_eval_time_ms: None,
                 ai_time_ms: None,
                 tool_calls: vec![],
                 explanation: None,
+                pii_detected: false,
+                injection_detected: false,
+                injection_confidence: 0.0,
+                ml_risk_score: 0.0,
             };
         }
         
@@ -379,12 +418,18 @@ impl ShieldEngine {
                     ),
                     matched_rules: vec![],
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: None,
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 };
             }
             Err(QuotaError::RateLimitExceeded { retry_after, .. }) => {
@@ -397,12 +442,18 @@ impl ShieldEngine {
                     ),
                     matched_rules: vec![],
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: None,
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 };
             }
             Err(QuotaError::ContentTooLarge { size, max }) => {
@@ -415,12 +466,18 @@ impl ShieldEngine {
                     ),
                     matched_rules: vec![],
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: None,
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 };
             }
             Err(_) => {
@@ -716,7 +773,38 @@ impl ShieldEngine {
     
     async fn do_classify(&self, tenant_id: &str, session_id: &str, content: &str, metadata: &serde_json::Value) -> Result<DecisionResult, Box<dyn std::error::Error>> {
         let start = Instant::now();
-        
+
+        // ML pre-processing: PII sanitization + injection detection (<2ms)
+        let (_sanitized, pii_detected) = self.ml_layer.sanitize_pii(content);
+        let (injection_detected, injection_confidence) = self.ml_layer.detect_injection(content);
+
+        // Short-circuit: block high-confidence injection without expensive AI call
+        if injection_detected && injection_confidence > 0.8 {
+            self.metrics.blocked_events.inc();
+            return Ok(DecisionResult {
+                decision: DecisionType::Block,
+                confidence: injection_confidence,
+                reason: "Prompt injection detected by ML layer".to_string(),
+                matched_rules: vec![],
+                ai_insights: None,
+                verification_result: None,
+                z3_verified: false,
+                processing_time_ms: start.elapsed().as_millis() as u64,
+                cached: false,
+                rule_eval_time_ms: None,
+                ai_time_ms: None,
+                tool_calls: vec![],
+                explanation: None,
+                pii_detected,
+                injection_detected,
+                injection_confidence,
+                ml_risk_score: 0.0,
+            });
+        }
+
+        // Use sanitized content for downstream processing (prevents PII leaking to AI backends)
+        let content = if pii_detected { &_sanitized } else { content };
+
         // Compliance mode: force rules-only
         if self.compliance_mode {
             let context = serde_json::json!({
@@ -727,7 +815,7 @@ impl ShieldEngine {
             });
             return self.classify_rules_only(&context).await;
         }
-        
+
         // Build evaluation context
         let context = serde_json::json!({
             "session_id": session_id,
@@ -735,7 +823,7 @@ impl ShieldEngine {
             "metadata": metadata,
             "content_length": content.len(),
         });
-        
+
         // Check routing mode
         match self.router.mode() {
             RoutingMode::RulesOnly => {
@@ -752,6 +840,11 @@ impl ShieldEngine {
             }
             RoutingMode::Smart => {
                 return self.classify_smart(tenant_id, &context, content, session_id).await;
+            }
+            RoutingMode::Formal => {
+                // Formal mode: Combine rules and AI for audit trails (reuse parallel execution)
+                return self.classify_speculative(tenant_id, &context, content, session_id).await;
+                return self.classify_sequential(tenant_id, &context, content, session_id).await;
             }
         }
     }
@@ -772,12 +865,18 @@ impl ShieldEngine {
             reason,
             matched_rules: rule_result.matched_rules,
             ai_insights: None,
+            verification_result: None,
+            z3_verified: false,
             processing_time_ms: start.elapsed().as_millis() as u64,
             cached: false,
             rule_eval_time_ms: Some(rule_time.as_millis() as u64),
             ai_time_ms: None,
             tool_calls: vec![],
             explanation: None,
+            pii_detected: false,
+            injection_detected: false,
+            injection_confidence: 0.0,
+            ml_risk_score: 0.0,
         })
     }
     
@@ -802,12 +901,18 @@ impl ShieldEngine {
                     ),
                     matched_rules: vec![],
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: None,
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 });
             }
             Err(_) => {
@@ -836,12 +941,18 @@ impl ShieldEngine {
                 model: ai_result.model,
                 fallback_used: false,
             }),
+            verification_result: None,
+            z3_verified: false,
             processing_time_ms: start.elapsed().as_millis() as u64,
             cached: false,
             rule_eval_time_ms: None,
             ai_time_ms: Some(ai_time.as_millis() as u64),
             tool_calls: vec![],
             explanation: None,
+            pii_detected: false,
+            injection_detected: false,
+            injection_confidence: 0.0,
+            ml_risk_score: 0.0,
         })
     }
     
@@ -866,12 +977,18 @@ impl ShieldEngine {
                     reason: rule_result.reason.unwrap_or_else(|| "Rule match".to_string()),
                     matched_rules: rule_result.matched_rules,
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 });
             }
         }
@@ -893,12 +1010,18 @@ impl ShieldEngine {
                     ),
                     matched_rules: rule_result.matched_rules,
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 });
             }
             Err(_) => {}
@@ -940,12 +1063,18 @@ impl ShieldEngine {
             reason: reason_text,
             matched_rules: rule_result.matched_rules,
             ai_insights,
+            verification_result: None,
+            z3_verified: false,
             processing_time_ms: start.elapsed().as_millis() as u64,
             cached: false,
             rule_eval_time_ms: Some(rule_time.as_millis() as u64),
             ai_time_ms: Some(ai_time.as_millis() as u64),
             tool_calls: vec![],
             explanation: None,
+            pii_detected: false,
+            injection_detected: false,
+            injection_confidence: 0.0,
+            ml_risk_score: 0.0,
         })
     }
     
@@ -972,12 +1101,18 @@ impl ShieldEngine {
                         reason: format!("Rule match (AI quota exceeded: {}/{})", used, limit),
                         matched_rules: rule_result.matched_rules,
                         ai_insights: None,
+                        verification_result: None,
+                        z3_verified: false,
                         processing_time_ms: start.elapsed().as_millis() as u64,
                         cached: false,
                         rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                         ai_time_ms: None,
                         tool_calls: vec![],
                         explanation: None,
+                        pii_detected: false,
+                        injection_detected: false,
+                        injection_confidence: 0.0,
+                        ml_risk_score: 0.0,
                     });
                 }
                 return Ok(DecisionResult {
@@ -986,12 +1121,18 @@ impl ShieldEngine {
                     reason: format!("AI quota exceeded: {}/{} per month. Upgrade at https://axiomguard.com/upgrade", used, limit),
                     matched_rules: vec![],
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 });
             }
             Err(_) => {}
@@ -1015,12 +1156,18 @@ impl ShieldEngine {
                     reason: format!("Rule match (AI failed): {}", rule_result.reason.unwrap_or_default()),
                     matched_rules: rule_result.matched_rules,
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 });
             }
         }
@@ -1055,12 +1202,18 @@ impl ShieldEngine {
                 model: ai.model,
                 fallback_used: false,
             }),
+            verification_result: None,
+            z3_verified: false,
             processing_time_ms: start.elapsed().as_millis() as u64,
             cached: false,
             rule_eval_time_ms: Some(rule_time.as_millis() as u64),
             ai_time_ms: None,
             tool_calls: vec![],
             explanation: None,
+            pii_detected: false,
+            injection_detected: false,
+            injection_confidence: 0.0,
+            ml_risk_score: 0.0,
         })
     }
     
@@ -1084,12 +1237,18 @@ impl ShieldEngine {
                     reason: rule_result.reason.unwrap_or_else(|| "Deterministic match".to_string()),
                     matched_rules: rule_result.matched_rules,
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 });
             }
             // No rule match but content is simple - allow
@@ -1099,12 +1258,18 @@ impl ShieldEngine {
                 reason: "Simple content, no rules matched".to_string(),
                 matched_rules: vec![],
                 ai_insights: None,
+                verification_result: None,
+                z3_verified: false,
                 processing_time_ms: start.elapsed().as_millis() as u64,
                 cached: false,
                 rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                 ai_time_ms: None,
                 tool_calls: vec![],
                 explanation: None,
+                pii_detected: false,
+                injection_detected: false,
+                injection_confidence: 0.0,
+                ml_risk_score: 0.0,
             });
         }
         
@@ -1126,12 +1291,18 @@ impl ShieldEngine {
                     ),
                     matched_rules: rule_result.matched_rules,
                     ai_insights: None,
+                    verification_result: None,
+                    z3_verified: false,
                     processing_time_ms: start.elapsed().as_millis() as u64,
                     cached: false,
                     rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                     ai_time_ms: None,
                     tool_calls: vec![],
                     explanation: None,
+                    pii_detected: false,
+                    injection_detected: false,
+                    injection_confidence: 0.0,
+                    ml_risk_score: 0.0,
                 });
             }
             Err(_) => {}
@@ -1156,12 +1327,18 @@ impl ShieldEngine {
                     model: ai.model,
                     fallback_used: false,
                 }),
+                verification_result: None,
+                z3_verified: false,
                 processing_time_ms: start.elapsed().as_millis() as u64,
                 cached: false,
                 rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                 ai_time_ms: Some(ai_time.as_millis() as u64),
                 tool_calls: vec![],
                 explanation: None,
+                pii_detected: false,
+                injection_detected: false,
+                injection_confidence: 0.0,
+                ml_risk_score: 0.0,
             })
         } else {
             // AI failed - handover for complex content
@@ -1171,22 +1348,30 @@ impl ShieldEngine {
                 reason: "Complex content, AI unavailable".to_string(),
                 matched_rules: rule_result.matched_rules,
                 ai_insights: None,
+                verification_result: None,
+                z3_verified: false,
                 processing_time_ms: start.elapsed().as_millis() as u64,
                 cached: false,
                 rule_eval_time_ms: Some(rule_time.as_millis() as u64),
                 ai_time_ms: None,
                 tool_calls: vec![],
                 explanation: None,
+                pii_detected: false,
+                injection_detected: false,
+                injection_confidence: 0.0,
+                ml_risk_score: 0.0,
             })
         }
     }
     
-    /// Evaluate all rules and return the best match
+    /// Evaluate all rules and return the best match.
+    /// When `early_exit_on_block` is enabled, stops after first BLOCK match
+    /// at priority <= 100 (security-critical rules).
     async fn evaluate_rules(&self, context: &serde_json::Value) -> RuleEvaluationResult {
         let rules = self.rules.read().await;
         let mut matched_rules = Vec::new();
         let mut highest_priority: Option<&SecurityRule> = None;
-        
+
         for rule in rules.iter().filter(|r| r.is_active) {
             let result = if let Some(ref compiled) = rule.compiled_rule {
                 self.jsonlogic.evaluate(compiled, context)
@@ -1197,9 +1382,17 @@ impl ShieldEngine {
             match result {
                 Ok(Value::Bool(true)) => {
                     matched_rules.push(rule.id.clone());
-                    
+
                     if highest_priority.map_or(true, |hp| rule.priority < hp.priority) {
                         highest_priority = Some(rule);
+                    }
+
+                    // Early exit: stop evaluating after first security-critical BLOCK
+                    if self.early_exit_on_block
+                        && rule.decision == DecisionType::Block
+                        && rule.priority <= 100
+                    {
+                        break;
                     }
                 }
                 Ok(_) => {}
@@ -1208,7 +1401,7 @@ impl ShieldEngine {
                 }
             }
         }
-        
+
         RuleEvaluationResult {
             decision: highest_priority.map(|r| r.decision.clone()),
             reason: highest_priority.map(|r| r.name.clone()),
@@ -1235,12 +1428,18 @@ impl ShieldEngine {
             reason: reason.to_string(),
             matched_rules: vec![],
             ai_insights: None,
+            verification_result: None,
+            z3_verified: false,
             processing_time_ms: elapsed.as_millis() as u64,
             cached: false,
             rule_eval_time_ms: None,
             ai_time_ms: None,
             tool_calls: vec![],
             explanation: None,
+            pii_detected: false,
+            injection_detected: false,
+            injection_confidence: 0.0,
+            ml_risk_score: 0.0,
         }
     }
     
@@ -1259,12 +1458,27 @@ impl ShieldEngine {
     /// Update active rules (thread-safe)
     pub async fn update_rules(&self, rules: Vec<SecurityRule>) {
         let mut compiled = rules;
+        let mut active = 0;
+        let mut deactivated = 0;
         for rule in &mut compiled {
+            // Validate rule logic — deactivate malformed rules
+            if let Err(e) = self.jsonlogic.validate(&rule.logic) {
+                tracing::warn!(
+                    "Deactivating invalid rule '{}' ({}): {}",
+                    rule.name, rule.id, e
+                );
+                rule.is_active = false;
+                deactivated += 1;
+                continue;
+            }
             rule.compile();
+            if rule.is_active {
+                active += 1;
+            }
         }
         let mut guard = self.rules.write().await;
         *guard = compiled;
-        tracing::info!("Updated {} security rules", guard.len());
+        tracing::info!("Updated {} security rules ({} active, {} deactivated)", guard.len(), active, deactivated);
     }
     
     /// Get current active rules

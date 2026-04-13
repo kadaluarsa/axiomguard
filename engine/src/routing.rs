@@ -28,6 +28,10 @@ pub enum RoutingMode {
     /// Smart: Route based on content complexity
     /// Use case: Automatic optimization
     Smart,
+
+    /// Formal: Strict compliance with documented policies, combines rules and AI for audit trails
+    /// Use case: Regulated environments requiring full audit records
+    Formal,
 }
 
 impl Default for RoutingMode {
@@ -45,6 +49,7 @@ impl RoutingMode {
             "sequential" => Some(RoutingMode::Sequential),
             "speculative" => Some(RoutingMode::Speculative),
             "smart" => Some(RoutingMode::Smart),
+            "formal" => Some(RoutingMode::Formal),
             _ => None,
         }
     }
@@ -138,6 +143,7 @@ impl ClassificationRouter {
             RoutingMode::Sequential => !rule_match,  // Use AI if no rule matched
             RoutingMode::Speculative => true,  // Always use AI (parallel)
             RoutingMode::Smart => self.smart_routing_decision(content, rule_match),
+            RoutingMode::Formal => true,
         }
     }
     
@@ -286,6 +292,7 @@ mod tests {
         assert_eq!(RoutingMode::from_str("sequential"), Some(RoutingMode::Sequential));
         assert_eq!(RoutingMode::from_str("speculative"), Some(RoutingMode::Speculative));
         assert_eq!(RoutingMode::from_str("smart"), Some(RoutingMode::Smart));
+        assert_eq!(RoutingMode::from_str("formal"), Some(RoutingMode::Formal));
         assert_eq!(RoutingMode::from_str("unknown"), None);
     }
     
